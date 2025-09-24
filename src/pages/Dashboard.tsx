@@ -1,6 +1,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useNavigate } from "react-router-dom";
 import { 
   BarChart3, 
   Users, 
@@ -15,6 +16,7 @@ import {
 } from "lucide-react";
 
 const Dashboard = () => {
+  const navigate = useNavigate();
   // Mock data for the dashboard
   const stats = [
     {
@@ -199,19 +201,35 @@ const Dashboard = () => {
               <CardTitle>Ações Rápidas</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              <Button variant="outline" className="w-full justify-start">
+              <Button 
+                variant="outline" 
+                className="w-full justify-start"
+                onClick={() => navigate("/users")}
+              >
                 <Users className="h-4 w-4 mr-2" />
                 Gerenciar Usuários
               </Button>
-              <Button variant="outline" className="w-full justify-start">
+              <Button 
+                variant="outline" 
+                className="w-full justify-start"
+                onClick={() => navigate("/survey-review")}
+              >
                 <FileText className="h-4 w-4 mr-2" />
                 Revisar Pesquisas
               </Button>
-              <Button variant="outline" className="w-full justify-start">
+              <Button 
+                variant="outline" 
+                className="w-full justify-start"
+                onClick={() => navigate("/reports")}
+              >
                 <BarChart3 className="h-4 w-4 mr-2" />
                 Gerar Relatórios
               </Button>
-              <Button variant="outline" className="w-full justify-start">
+              <Button 
+                variant="outline" 
+                className="w-full justify-start"
+                onClick={() => navigate("/municipalities")}
+              >
                 <MapPin className="h-4 w-4 mr-2" />
                 Dados Municipais
               </Button>

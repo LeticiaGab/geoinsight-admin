@@ -10,6 +10,7 @@ import Surveys from "./pages/Surveys";
 import Municipalities from "./pages/Municipalities";
 import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
+import SurveyReview from "./pages/SurveyReview";
 import Layout from "./components/Layout";
 import NotFound from "./pages/NotFound";
 
@@ -41,6 +42,9 @@ const App = () => (
           </Route>
           <Route path="/settings" element={<Layout />}>
             <Route index element={<Settings />} />
+          </Route>
+          <Route path="/survey-review" element={<Layout />}>
+            <Route index element={<SurveyReview />} />
           </Route>
           <Route path="*" element={<NotFound />} />
         </Routes>

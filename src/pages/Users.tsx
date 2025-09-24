@@ -5,18 +5,15 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Search, Plus, Pencil, Trash2, UserPlus, Filter } from "lucide-react";
+import { Search, Plus, Pencil, Trash2, UserPlus, Filter, Users as UsersIcon } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 const Users = () => {
-  const [searchTerm, setSearchTerm] = useState("");
-  const [roleFilter, setRoleFilter] = useState("all");
-  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
-
   // Mock user data
-  const users = [
+  const mockUsers = [
     {
       id: 1,
       name: "Maria Silva",
@@ -69,6 +66,20 @@ const Users = () => {
     }
   ];
 
+  const [users, setUsers] = useState(mockUsers);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [roleFilter, setRoleFilter] = useState("all");
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<any>(null);
+  const [newUser, setNewUser] = useState({
+    name: "",
+    email: "",
+    role: "user",
+    municipality: ""
+  });
+  const { toast } = useToast();
+
   const getRoleBadge = (role: string) => {
     switch (role) {
       case "administrator":
@@ -98,12 +109,89 @@ const Users = () => {
     return matchesSearch && matchesRole;
   });
 
+  const handleAddUser = () => {
+    if (!newUser.name || !newUser.email) {
+      toast({
+        title: "Erro",
+        description: "Nome e email são obrigatórios.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    const user = {
+      id: users.length + 1,
+      name: newUser.name,
+      email: newUser.email,
+      role: newUser.role,
+      status: "active",
+      lastLogin: "Nunca",
+      municipality: newUser.municipality,
+      avatar: null
+    };
+
+    setUsers([...users, user]);
+    setNewUser({ name: "", email: "", role: "user", municipality: "" });
+    setIsAddDialogOpen(false);
+    
+    toast({
+      title: "Sucesso",
+      description: "Usuário adicionado com sucesso!"
+    });
+  };
+
+  const handleEditUser = (user: any) => {
+    setSelectedUser(user);
+    setNewUser({
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      municipality: user.municipality
+    });
+    setIsEditDialogOpen(true);
+  };
+
+  const handleUpdateUser = () => {
+    if (!newUser.name || !newUser.email) {
+      toast({
+        title: "Erro",
+        description: "Nome e email são obrigatórios.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    const updatedUsers = users.map(user =>
+      user.id === selectedUser.id
+        ? { ...user, name: newUser.name, email: newUser.email, role: newUser.role, municipality: newUser.municipality }
+        : user
+    );
+
+    setUsers(updatedUsers);
+    setIsEditDialogOpen(false);
+    setSelectedUser(null);
+    setNewUser({ name: "", email: "", role: "user", municipality: "" });
+    
+    toast({
+      title: "Sucesso",
+      description: "Usuário atualizado com sucesso!"
+    });
+  };
+
+  const handleDeleteUser = (userId: number) => {
+    setUsers(users.filter(user => user.id !== userId));
+    toast({
+      title: "Sucesso",
+      description: "Usuário removido com sucesso!"
+    });
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Gestão de Usuários</h1>
+          <h1 className="text-2xl font-bold text-foreground">Gestão de Usuários</h1>
           <p className="text-muted-foreground">
             Gerencie usuários, permissões e acessos do sistema
           </p>
@@ -126,15 +214,26 @@ const Users = () => {
             <div className="space-y-4 py-4">
               <div className="space-y-2">
                 <Label htmlFor="name">Nome Completo</Label>
-                <Input id="name" placeholder="Digite o nome completo" />
+                <Input 
+                  id="name" 
+                  placeholder="Digite o nome completo" 
+                  value={newUser.name}
+                  onChange={(e) => setNewUser({...newUser, name: e.target.value})}
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
-                <Input id="email" type="email" placeholder="usuario@geocidades.gov.br" />
+                <Input 
+                  id="email" 
+                  type="email" 
+                  placeholder="usuario@geocidades.gov.br" 
+                  value={newUser.email}
+                  onChange={(e) => setNewUser({...newUser, email: e.target.value})}
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="role">Perfil de Acesso</Label>
-                <Select>
+                <Select value={newUser.role} onValueChange={(value) => setNewUser({...newUser, role: value})}>
                   <SelectTrigger>
                     <SelectValue placeholder="Selecione o perfil" />
                   </SelectTrigger>
@@ -147,30 +246,70 @@ const Users = () => {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="municipality">Município</Label>
-                <Select>
+                <Select value={newUser.municipality} onValueChange={(value) => setNewUser({...newUser, municipality: value})}>
                   <SelectTrigger>
                     <SelectValue placeholder="Selecione o município" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="sao-paulo">São Paulo</SelectItem>
-                    <SelectItem value="rio-janeiro">Rio de Janeiro</SelectItem>
-                    <SelectItem value="belo-horizonte">Belo Horizonte</SelectItem>
-                    <SelectItem value="brasilia">Brasília</SelectItem>
-                    <SelectItem value="salvador">Salvador</SelectItem>
+                    <SelectItem value="São Paulo">São Paulo</SelectItem>
+                    <SelectItem value="Rio de Janeiro">Rio de Janeiro</SelectItem>
+                    <SelectItem value="Belo Horizonte">Belo Horizonte</SelectItem>
+                    <SelectItem value="Brasília">Brasília</SelectItem>
+                    <SelectItem value="Salvador">Salvador</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </div>
-            <div className="flex justify-end gap-3">
+            <DialogFooter>
               <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
                 Cancelar
               </Button>
-              <Button onClick={() => setIsAddDialogOpen(false)}>
+              <Button onClick={handleAddUser}>
                 Cadastrar Usuário
               </Button>
-            </div>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
+      </div>
+
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total de Usuários</CardTitle>
+            <UsersIcon className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{users.length}</div>
+            <p className="text-xs text-muted-foreground">
+              {users.filter(u => u.status === "active").length} ativos
+            </p>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Administradores</CardTitle>
+            <UsersIcon className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {users.filter(u => u.role === "administrator").length}
+            </div>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Revisores</CardTitle>
+            <UsersIcon className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {users.filter(u => u.role === "reviewer").length}
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Filters */}
@@ -247,10 +386,16 @@ const Users = () => {
                   <TableCell>{user.lastLogin}</TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-2">
-                      <Button variant="ghost" size="sm">
+                      <Button variant="ghost" size="sm" onClick={() => handleEditUser(user)}>
                         <Pencil className="h-4 w-4" />
                       </Button>
-                      <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive">
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        className="text-destructive hover:text-destructive"
+                        onClick={() => handleDeleteUser(user.id)}
+                        disabled={user.role === "administrator"}
+                      >
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>
@@ -261,6 +406,75 @@ const Users = () => {
           </Table>
         </CardContent>
       </Card>
+
+      {/* Edit User Modal */}
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Editar Usuário</DialogTitle>
+            <DialogDescription>
+              Atualize as informações do usuário
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-name">Nome Completo</Label>
+              <Input 
+                id="edit-name" 
+                placeholder="Digite o nome completo" 
+                value={newUser.name}
+                onChange={(e) => setNewUser({...newUser, name: e.target.value})}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-email">Email</Label>
+              <Input 
+                id="edit-email" 
+                type="email" 
+                placeholder="usuario@geocidades.gov.br" 
+                value={newUser.email}
+                onChange={(e) => setNewUser({...newUser, email: e.target.value})}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-role">Perfil de Acesso</Label>
+              <Select value={newUser.role} onValueChange={(value) => setNewUser({...newUser, role: value})}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o perfil" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="user">Usuário</SelectItem>
+                  <SelectItem value="reviewer">Revisor</SelectItem>
+                  <SelectItem value="administrator">Administrador</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-municipality">Município</Label>
+              <Select value={newUser.municipality} onValueChange={(value) => setNewUser({...newUser, municipality: value})}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o município" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="São Paulo">São Paulo</SelectItem>
+                  <SelectItem value="Rio de Janeiro">Rio de Janeiro</SelectItem>
+                  <SelectItem value="Belo Horizonte">Belo Horizonte</SelectItem>
+                  <SelectItem value="Brasília">Brasília</SelectItem>
+                  <SelectItem value="Salvador">Salvador</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleUpdateUser}>
+              Atualizar Usuário
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
