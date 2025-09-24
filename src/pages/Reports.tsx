@@ -43,10 +43,10 @@ const statusData = [
 
 const Reports = () => {
   const [filters, setFilters] = useState({
-    municipality: "",
+    municipality: "all",
     dateFrom: "",
     dateTo: "",
-    status: ""
+    status: "all"
   });
   const [filteredData, setFilteredData] = useState<ReportData[]>(mockReportData);
   const { toast } = useToast();
@@ -57,11 +57,11 @@ const Reports = () => {
   const applyFilters = () => {
     let filtered = mockReportData;
 
-    if (filters.municipality) {
+    if (filters.municipality && filters.municipality !== "all") {
       filtered = filtered.filter(item => item.municipality === filters.municipality);
     }
 
-    if (filters.status) {
+    if (filters.status && filters.status !== "all") {
       filtered = filtered.filter(item => item.status === filters.status);
     }
 
@@ -78,10 +78,10 @@ const Reports = () => {
 
   const clearFilters = () => {
     setFilters({
-      municipality: "",
+      municipality: "all",
       dateFrom: "",
       dateTo: "",
-      status: ""
+      status: "all"
     });
     setFilteredData(mockReportData);
   };
@@ -150,7 +150,7 @@ const Reports = () => {
                   <SelectValue placeholder="Todos os municípios" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Todos os municípios</SelectItem>
+                  <SelectItem value="all">Todos os municípios</SelectItem>
                   {municipalities.map(municipality => (
                     <SelectItem key={municipality} value={municipality}>{municipality}</SelectItem>
                   ))}
@@ -165,7 +165,7 @@ const Reports = () => {
                   <SelectValue placeholder="Todos os status" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Todos os status</SelectItem>
+                  <SelectItem value="all">Todos os status</SelectItem>
                   {statuses.map(status => (
                     <SelectItem key={status} value={status}>
                       {status === "Pending" ? "Pendente" : status === "Reviewed" ? "Revisada" : "Validada"}
