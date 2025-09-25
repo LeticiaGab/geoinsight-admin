@@ -64,7 +64,7 @@ const mockUsers: User[] = [
 
 const Settings = () => {
   const { toast } = useToast();
-  const { isDark, toggleTheme } = useTheme();
+  const { isLight, toggleTheme } = useTheme();
   const [users, setUsers] = useState<User[]>(mockUsers);
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
   const [newUser, setNewUser] = useState({
@@ -293,7 +293,7 @@ const Settings = () => {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            {isDark ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
+            {isLight ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
             Configurações de Tema
           </CardTitle>
           <CardDescription>
@@ -303,14 +303,14 @@ const Settings = () => {
         <CardContent>
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
-              <Label htmlFor="dark-mode">Modo Escuro</Label>
+              <Label htmlFor="light-mode">Modo Claro</Label>
               <div className="text-sm text-muted-foreground">
-                Ativar o tema escuro para toda a interface
+                {isLight ? "Desativar para voltar ao tema escuro padrão" : "Ativar tema claro com fundo branco"}
               </div>
             </div>
             <Switch
-              id="dark-mode"
-              checked={isDark}
+              id="light-mode"
+              checked={isLight}
               onCheckedChange={toggleTheme}
             />
           </div>

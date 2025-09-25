@@ -1,22 +1,22 @@
 import { useState, useEffect } from 'react';
 
 export const useTheme = () => {
-  const [isDark, setIsDark] = useState(() => {
+  const [isLight, setIsLight] = useState(() => {
     const saved = localStorage.getItem('theme');
-    return saved === 'dark' || (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    return saved === 'light'; // Default to dark mode (false)
   });
 
   useEffect(() => {
     const root = document.documentElement;
-    if (isDark) {
-      root.classList.add('dark');
+    if (isLight) {
+      root.classList.remove('dark'); // Remove dark class for light mode
     } else {
-      root.classList.remove('dark');
+      root.classList.add('dark'); // Add dark class for default dark mode
     }
-    localStorage.setItem('theme', isDark ? 'dark' : 'light');
-  }, [isDark]);
+    localStorage.setItem('theme', isLight ? 'light' : 'dark');
+  }, [isLight]);
 
-  const toggleTheme = () => setIsDark(!isDark);
+  const toggleTheme = () => setIsLight(!isLight);
 
-  return { isDark, toggleTheme };
+  return { isLight, toggleTheme, isDark: !isLight };
 };
