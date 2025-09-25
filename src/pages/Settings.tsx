@@ -19,9 +19,12 @@ import {
   Trash2, 
   Save,
   Clock,
-  Shield
+  Shield,
+  Moon,
+  Sun
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useTheme } from "@/hooks/useTheme";
 
 interface User {
   id: string;
@@ -60,8 +63,9 @@ const mockUsers: User[] = [
 ];
 
 const Settings = () => {
+  const { toast } = useToast();
+  const { isDark, toggleTheme } = useTheme();
   const [users, setUsers] = useState<User[]>(mockUsers);
-  const [darkMode, setDarkMode] = useState(false);
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
   const [newUser, setNewUser] = useState({
     name: "",
@@ -69,7 +73,6 @@ const Settings = () => {
     role: "User" as User['role']
   });
   const [lastBackup, setLastBackup] = useState("2024-01-15 02:00:00");
-  const { toast } = useToast();
 
   const handleAddUser = () => {
     if (!newUser.name || !newUser.email) {
@@ -290,7 +293,7 @@ const Settings = () => {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Palette className="h-5 w-5" />
+            {isDark ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
             Configurações de Tema
           </CardTitle>
           <CardDescription>
@@ -307,8 +310,8 @@ const Settings = () => {
             </div>
             <Switch
               id="dark-mode"
-              checked={darkMode}
-              onCheckedChange={setDarkMode}
+              checked={isDark}
+              onCheckedChange={toggleTheme}
             />
           </div>
         </CardContent>

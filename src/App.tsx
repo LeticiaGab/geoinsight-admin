@@ -11,6 +11,7 @@ import Municipalities from "./pages/Municipalities";
 import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
 import SurveyReview from "./pages/SurveyReview";
+import Profile from "./pages/Profile";
 import Layout from "./components/Layout";
 import NotFound from "./pages/NotFound";
 
@@ -45,6 +46,9 @@ const App = () => (
           </Route>
           <Route path="/survey-review" element={<Layout />}>
             <Route index element={<SurveyReview />} />
+          </Route>
+          <Route path="/profile" element={<Layout />}>
+            <Route index element={<Profile />} />
           </Route>
           <Route path="*" element={<NotFound />} />
         </Routes>
