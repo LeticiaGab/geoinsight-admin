@@ -70,7 +70,7 @@ const Profile = () => {
     } as const;
     
     const colors = {
-      "Pending": "bg-warning text-warning-foreground",
+      "Pending": "bg-card text-card-foreground border border-border",
       "Reviewed": "bg-primary text-primary-foreground",
       "Validated": "bg-success text-success-foreground"
     };
