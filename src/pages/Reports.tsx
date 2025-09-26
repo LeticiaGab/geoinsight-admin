@@ -36,9 +36,9 @@ const chartData = [
 ];
 
 const statusData = [
-  { name: "Validadas", value: 35, color: "#10b981" },
-  { name: "Revisadas", value: 28, color: "#f59e0b" },
-  { name: "Pendentes", value: 15, color: "#ef4444" },
+  { name: "Validadas", value: 45, color: "#22C55E" },
+  { name: "Revisadas", value: 30, color: "#F59E0B" },
+  { name: "Pendentes", value: 25, color: "#EF4444" },
 ];
 
 const Reports = () => {
@@ -239,25 +239,34 @@ const Reports = () => {
             <CardDescription>Distribuição por status de validação</CardDescription>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <PieChart>
-                <Pie
-                  data={statusData}
-                  cx="50%"
-                  cy="50%"
-                  labelLine={false}
-                  label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                  outerRadius={80}
-                  fill="#8884d8"
-                  dataKey="value"
-                >
-                  {statusData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
+            <div className="space-y-4">
+              {statusData.map((item, index) => {
+                const total = statusData.reduce((sum, data) => sum + data.value, 0);
+                const percentage = ((item.value / total) * 100).toFixed(0);
+                
+                return (
+                  <div key={index} className="space-y-2">
+                    <div className="flex justify-between items-center text-sm">
+                      <span className="font-medium text-foreground">{item.name}</span>
+                      <span className="text-muted-foreground">{percentage}%</span>
+                    </div>
+                    <div className="w-full bg-muted rounded-full h-3 overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all duration-500 flex items-center justify-end pr-2"
+                        style={{
+                          width: `${percentage}%`,
+                          backgroundColor: item.color
+                        }}
+                      >
+                        <span className="text-xs font-medium text-white">
+                          {parseInt(percentage) > 15 ? `${percentage}%` : ''}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </CardContent>
         </Card>
       </div>
