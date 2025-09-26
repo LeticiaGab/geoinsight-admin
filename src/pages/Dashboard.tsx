@@ -73,11 +73,11 @@ const Dashboard = () => {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "Aprovado":
-        return <Badge variant="default" className="bg-success text-success-foreground">Aprovado</Badge>;
+        return <Badge className="bg-success text-success-foreground border-success">Aprovado</Badge>;
       case "Pendente":
-        return <Badge variant="secondary">Pendente</Badge>;
+        return <Badge className="bg-warning text-warning-foreground border-warning">Pendente</Badge>;
       case "Revisão":
-        return <Badge variant="outline" className="text-warning border-warning">Revisão</Badge>;
+        return <Badge className="bg-info text-info-foreground border-info">Revisão</Badge>;
       default:
         return <Badge variant="outline">{status}</Badge>;
     }
@@ -148,21 +148,24 @@ const Dashboard = () => {
           <CardContent>
             <div className="space-y-4">
               {recentSurveys.map((survey) => (
-                <div key={survey.id} className="flex items-center justify-between p-4 border rounded-lg">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-3">
-                      <h4 className="font-medium">{survey.municipality}</h4>
-                      {getStatusBadge(survey.status)}
-                    </div>
-                    <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                <div key={survey.id} className="p-4 border rounded-lg bg-card">
+                  <div className="flex items-start justify-between mb-3">
+                    <h4 className="font-medium text-foreground">{survey.municipality}</h4>
+                    {getStatusBadge(survey.status)}
+                  </div>
+                  <div className="space-y-1 mb-4">
+                    <div className="text-sm text-muted-foreground">
                       <span>Tipo: {survey.type}</span>
+                    </div>
+                    <div className="text-sm text-muted-foreground">
                       <span>Revisor: {survey.reviewer}</span>
-                      <span>{survey.date}</span>
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      <span>Data: {survey.date}</span>
                     </div>
                   </div>
                   <Button 
-                    variant="outline" 
-                    size="sm"
+                    className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"
                     onClick={() => handleViewDetails(survey)}
                   >
                     Ver Detalhes
