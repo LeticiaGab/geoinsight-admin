@@ -2,6 +2,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
+import { useState } from "react";
+import SurveyDetailModal from "@/components/SurveyDetailModal";
 import { 
   BarChart3, 
   Users, 
@@ -17,6 +19,13 @@ import {
 
 const Dashboard = () => {
   const navigate = useNavigate();
+  const [selectedSurvey, setSelectedSurvey] = useState<any>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
+  const handleViewDetails = (survey: any) => {
+    setSelectedSurvey(survey);
+    setIsModalOpen(true);
+  };
   // Mock data for the dashboard
   const stats = [
     {
@@ -151,7 +160,11 @@ const Dashboard = () => {
                       <span>{survey.date}</span>
                     </div>
                   </div>
-                  <Button variant="outline" size="sm">
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => handleViewDetails(survey)}
+                  >
                     Ver Detalhes
                   </Button>
                 </div>
@@ -237,6 +250,12 @@ const Dashboard = () => {
           </Card>
         </div>
       </div>
+
+      <SurveyDetailModal
+        survey={selectedSurvey}
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+      />
     </div>
   );
 };
