@@ -1,1 +1,7 @@
 project_id = "oykahgkycgzmfuqtmbru"
+
+[functions.export-data]
+verify_jwt = false
+
+[functions.seed-users]
+verify_jwt = false

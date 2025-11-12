@@ -13,6 +13,7 @@ import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
 import SurveyReview from "./pages/SurveyReview";
 import Profile from "./pages/Profile";
+import SeedData from "./pages/SeedData";
 import Layout from "./components/Layout";
 import NotFound from "./pages/NotFound";
 
@@ -52,6 +53,7 @@ const App = () => (
           <Route path="/profile" element={<Layout />}>
             <Route index element={<Profile />} />
           </Route>
+          <Route path="/seed-data" element={<SeedData />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
