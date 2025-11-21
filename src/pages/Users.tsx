@@ -156,6 +156,32 @@ const Users = () => {
     return matchesSearch && matchesRole && matchesStatus;
   });
 
+  const sendNotificationEmail = async (
+    type: 'created' | 'updated' | 'deleted',
+    user: { name: string; email: string; role?: UserRole }
+  ) => {
+    try {
+      // Get current admin user email
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      
+      if (!currentUser?.email) {
+        console.log('No admin email found, skipping notification');
+        return;
+      }
+
+      await supabase.functions.invoke('send-user-notification', {
+        body: {
+          type,
+          user,
+          adminEmail: currentUser.email
+        }
+      });
+    } catch (error) {
+      console.error('Failed to send notification email:', error);
+      // Don't throw - email failure shouldn't break user operations
+    }
+  };
+
   const handleAddUser = async () => {
     if (!newUser.name || !newUser.email || !newUser.password) {
       toast({
@@ -202,6 +228,13 @@ const Users = () => {
         });
 
       if (roleError) throw roleError;
+
+      // Send notification email
+      await sendNotificationEmail('created', {
+        name: newUser.name,
+        email: newUser.email,
+        role: newUser.role
+      });
 
       setNewUser({ name: "", email: "", password: "", role: "researcher", status: "active" });
       setIsAddDialogOpen(false);
@@ -268,6 +301,13 @@ const Users = () => {
 
       if (roleError) throw roleError;
 
+      // Send notification email
+      await sendNotificationEmail('updated', {
+        name: newUser.name,
+        email: selectedUser.email,
+        role: newUser.role
+      });
+
       setIsEditDialogOpen(false);
       setSelectedUser(null);
       setNewUser({ name: "", email: "", password: "", role: "researcher", status: "active" });
@@ -291,6 +331,8 @@ const Users = () => {
   };
 
   const handleDeleteUser = async (userId: string) => {
+    const userToDelete = users.find(u => u.id === userId);
+    
     try {
       setLoading(true);
 
@@ -314,6 +356,14 @@ const Users = () => {
       const { error: authError } = await supabase.auth.admin.deleteUser(userId);
 
       if (authError) throw authError;
+
+      // Send notification email
+      if (userToDelete) {
+        await sendNotificationEmail('deleted', {
+          name: userToDelete.full_name,
+          email: userToDelete.email
+        });
+      }
 
       toast({
         title: "Sucesso",
