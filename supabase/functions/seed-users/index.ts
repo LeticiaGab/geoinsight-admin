@@ -25,77 +25,42 @@ serve(async (req) => {
 
     console.log("Starting user seeding process...");
 
-    // Sample users data with Brazilian names
+    // 5 Admin users
     const usersData = [
       { 
-        email: 'ana.silva@exemplo.com.br', 
-        full_name: 'Ana Paula Silva', 
+        email: 'admin1@exemplo.com.br', 
+        full_name: 'Admin User One', 
         role: 'administrator',
         status: 'active',
-        registration_date: '2023-01-10T10:00:00Z'
+        registration_date: '2024-01-10T10:00:00Z'
       },
       { 
-        email: 'carlos.santos@exemplo.com.br', 
-        full_name: 'Carlos Eduardo Santos', 
-        role: 'researcher',
+        email: 'admin2@exemplo.com.br', 
+        full_name: 'Admin User Two', 
+        role: 'administrator',
         status: 'active',
-        registration_date: '2023-02-15T14:30:00Z'
+        registration_date: '2024-01-11T10:00:00Z'
       },
       { 
-        email: 'juliana.oliveira@exemplo.com.br', 
-        full_name: 'Juliana Oliveira Costa', 
-        role: 'analyst',
+        email: 'admin3@exemplo.com.br', 
+        full_name: 'Admin User Three', 
+        role: 'administrator',
         status: 'active',
-        registration_date: '2023-03-20T09:15:00Z'
+        registration_date: '2024-01-12T10:00:00Z'
       },
       { 
-        email: 'marcos.ferreira@exemplo.com.br', 
-        full_name: 'Marcos Vinicius Ferreira', 
-        role: 'coordinator',
+        email: 'admin4@exemplo.com.br', 
+        full_name: 'Admin User Four', 
+        role: 'administrator',
         status: 'active',
-        registration_date: '2023-04-05T11:45:00Z'
+        registration_date: '2024-01-13T10:00:00Z'
       },
       { 
-        email: 'patricia.almeida@exemplo.com.br', 
-        full_name: 'Patrícia Almeida Rocha', 
-        role: 'researcher',
-        status: 'inactive',
-        registration_date: '2023-05-12T16:20:00Z'
-      },
-      { 
-        email: 'rodrigo.lima@exemplo.com.br', 
-        full_name: 'Rodrigo Lima Barbosa', 
-        role: 'analyst',
+        email: 'admin5@exemplo.com.br', 
+        full_name: 'Admin User Five', 
+        role: 'administrator',
         status: 'active',
-        registration_date: '2023-06-18T08:30:00Z'
-      },
-      { 
-        email: 'fernanda.costa@exemplo.com.br', 
-        full_name: 'Fernanda Costa Ribeiro', 
-        role: 'researcher',
-        status: 'active',
-        registration_date: '2023-07-22T13:10:00Z'
-      },
-      { 
-        email: 'bruno.souza@exemplo.com.br', 
-        full_name: 'Bruno Henrique Souza', 
-        role: 'coordinator',
-        status: 'inactive',
-        registration_date: '2023-08-30T15:45:00Z'
-      },
-      { 
-        email: 'camila.rodrigues@exemplo.com.br', 
-        full_name: 'Camila Rodrigues Martins', 
-        role: 'analyst',
-        status: 'active',
-        registration_date: '2023-09-14T10:25:00Z'
-      },
-      { 
-        email: 'rafael.pereira@exemplo.com.br', 
-        full_name: 'Rafael Pereira Gomes', 
-        role: 'researcher',
-        status: 'active',
-        registration_date: '2023-10-08T12:00:00Z'
+        registration_date: '2024-01-14T10:00:00Z'
       }
     ];
 
