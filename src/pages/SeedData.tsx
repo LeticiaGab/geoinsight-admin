@@ -173,7 +173,7 @@ const SeedData = () => {
                 Seed Users
               </CardTitle>
               <CardDescription>
-                Create 10 test users with different roles (Administrator, Researcher, Analyst, Coordinator)
+                Create 5 administrator users for testing
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -261,7 +261,7 @@ const SeedData = () => {
           </CardHeader>
           <CardContent className="space-y-2">
             <ol className="list-decimal list-inside space-y-2 text-sm text-muted-foreground">
-              <li>Click "Seed Users" to create 10 test users with profiles and roles</li>
+              <li>Click "Seed Users" to create 5 admin users with profiles and roles</li>
               <li>Municipalities are already populated in the database</li>
               <li>Click "Seed Reports" to create sample reports (requires users to be seeded first)</li>
               <li>All test users have the password: <code className="bg-muted px-1 py-0.5 rounded">Test@123456</code></li>
