@@ -2,8 +2,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import SurveyDetailModal from "@/components/SurveyDetailModal";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
+import { Skeleton } from "@/components/ui/skeleton";
 import { 
   BarChart3, 
   Users, 
@@ -19,18 +22,165 @@ import {
 
 const Dashboard = () => {
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [selectedSurvey, setSelectedSurvey] = useState<any>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  
+  // State for real data
+  const [totalReports, setTotalReports] = useState(0);
+  const [activeMunicipalities, setActiveMunicipalities] = useState(0);
+  const [totalUsers, setTotalUsers] = useState(0);
+  const [recentReports, setRecentReports] = useState<any[]>([]);
+  const [approvedCount, setApprovedCount] = useState(0);
+  const [pendingCount, setPendingCount] = useState(0);
+  const [rejectedCount, setRejectedCount] = useState(0);
 
-  const handleViewDetails = (survey: any) => {
-    setSelectedSurvey(survey);
+  const handleViewDetails = (report: any) => {
+    setSelectedSurvey(report);
     setIsModalOpen(true);
   };
-  // Mock data for the dashboard
+
+  const fetchDashboardData = async () => {
+    try {
+      // Fetch total reports
+      const { count: reportsCount, error: reportsError } = await supabase
+        .from('reports')
+        .select('*', { count: 'exact', head: true });
+      
+      if (reportsError) throw reportsError;
+      setTotalReports(reportsCount || 0);
+
+      // Fetch active municipalities
+      const { count: municipalitiesCount, error: municipalitiesError } = await supabase
+        .from('municipalities')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'active');
+      
+      if (municipalitiesError) throw municipalitiesError;
+      setActiveMunicipalities(municipalitiesCount || 0);
+
+      // Fetch total users
+      const { count: usersCount, error: usersError } = await supabase
+        .from('profiles')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'active');
+      
+      if (usersError) throw usersError;
+      setTotalUsers(usersCount || 0);
+
+      // Fetch recent reports with municipality and author info
+      const { data: reportsData, error: recentReportsError } = await supabase
+        .from('reports')
+        .select(`
+          *,
+          municipalities (name),
+          profiles (full_name)
+        `)
+        .order('created_at', { ascending: false })
+        .limit(5);
+      
+      if (recentReportsError) throw recentReportsError;
+      setRecentReports(reportsData || []);
+
+      // Fetch status counts
+      const { data: statusData, error: statusError } = await supabase
+        .from('reports')
+        .select('status');
+      
+      if (statusError) throw statusError;
+      
+      const approved = statusData?.filter(r => r.status === 'approved').length || 0;
+      const pending = statusData?.filter(r => r.status === 'pending').length || 0;
+      const rejected = statusData?.filter(r => r.status === 'rejected').length || 0;
+      
+      setApprovedCount(approved);
+      setPendingCount(pending);
+      setRejectedCount(rejected);
+
+    } catch (error) {
+      console.error('Error fetching dashboard data:', error);
+      toast({
+        title: "Erro",
+        description: "Falha ao carregar dados do dashboard",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
+  };
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    await fetchDashboardData();
+    toast({
+      title: "Dados atualizados",
+      description: "Dashboard atualizado com sucesso",
+    });
+  };
+
+  useEffect(() => {
+    fetchDashboardData();
+
+    // Set up real-time subscriptions
+    const reportsChannel = supabase
+      .channel('dashboard-reports')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'reports'
+        },
+        () => {
+          fetchDashboardData();
+        }
+      )
+      .subscribe();
+
+    const municipalitiesChannel = supabase
+      .channel('dashboard-municipalities')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'municipalities'
+        },
+        () => {
+          fetchDashboardData();
+        }
+      )
+      .subscribe();
+
+    const profilesChannel = supabase
+      .channel('dashboard-profiles')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'profiles'
+        },
+        () => {
+          fetchDashboardData();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(reportsChannel);
+      supabase.removeChannel(municipalitiesChannel);
+      supabase.removeChannel(profilesChannel);
+    };
+  }, []);
+
   const stats = [
     {
       title: "Total de Pesquisas",
-      value: "1,247",
+      value: isLoading ? "..." : totalReports.toString(),
       change: "+12%",
       changeType: "positive" as const,
       icon: FileText,
@@ -38,7 +188,7 @@ const Dashboard = () => {
     },
     {
       title: "Municípios Ativos",
-      value: "85",
+      value: isLoading ? "..." : activeMunicipalities.toString(),
       change: "+3",
       changeType: "positive" as const,
       icon: MapPin,
@@ -46,7 +196,7 @@ const Dashboard = () => {
     },
     {
       title: "Usuários Registrados",
-      value: "342",
+      value: isLoading ? "..." : totalUsers.toString(),
       change: "+18%",
       changeType: "positive" as const,
       icon: Users,
@@ -54,33 +204,33 @@ const Dashboard = () => {
     },
     {
       title: "Taxa de Sincronização",
-      value: "94.2%",
-      change: "-2.1%",
-      changeType: "negative" as const,
+      value: "100%",
+      change: "Real-time",
+      changeType: "positive" as const,
       icon: RefreshCw,
-      description: "Dados sincronizados com sucesso"
+      description: "Dados sincronizados em tempo real"
     }
-  ];
-
-  const recentSurveys = [
-    { id: 1, municipality: "São Paulo", status: "Aprovado", reviewer: "Maria Silva", date: "2024-01-15", type: "Infraestrutura" },
-    { id: 2, municipality: "Rio de Janeiro", status: "Pendente", reviewer: "João Santos", date: "2024-01-14", type: "Transporte" },
-    { id: 3, municipality: "Belo Horizonte", status: "Revisão", reviewer: "Ana Costa", date: "2024-01-14", type: "Habitação" },
-    { id: 4, municipality: "Brasília", status: "Aprovado", reviewer: "Carlos Lima", date: "2024-01-13", type: "Educação" },
-    { id: 5, municipality: "Salvador", status: "Pendente", reviewer: "Lucia Ferreira", date: "2024-01-13", type: "Saúde" }
   ];
 
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case "Aprovado":
+      case "approved":
         return <Badge className="bg-success text-success-foreground border-success">Aprovado</Badge>;
-      case "Pendente":
+      case "pending":
         return <Badge className="bg-warning text-warning-foreground border-warning">Pendente</Badge>;
-      case "Revisão":
-        return <Badge className="bg-info text-info-foreground border-info">Revisão</Badge>;
+      case "rejected":
+        return <Badge className="bg-destructive text-destructive-foreground border-destructive">Rejeitado</Badge>;
       default:
         return <Badge variant="outline">{status}</Badge>;
     }
+  };
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('pt-BR', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    });
   };
 
   return (
@@ -94,12 +244,12 @@ const Dashboard = () => {
           </p>
         </div>
         <div className="flex gap-3">
-          <Button variant="outline" size="sm">
+          <Button variant="outline" size="sm" onClick={() => navigate("/reports")}>
             <Download className="h-4 w-4 mr-2" />
             Exportar Relatório
           </Button>
-          <Button size="sm">
-            <RefreshCw className="h-4 w-4 mr-2" />
+          <Button size="sm" onClick={handleRefresh} disabled={isRefreshing}>
+            <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
             Atualizar Dados
           </Button>
         </div>
@@ -146,33 +296,57 @@ const Dashboard = () => {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              {recentSurveys.map((survey) => (
-                <div key={survey.id} className="p-4 border rounded-lg bg-card">
-                  <div className="flex items-start justify-between mb-3">
-                    <h4 className="font-medium text-foreground">{survey.municipality}</h4>
-                    {getStatusBadge(survey.status)}
+            {isLoading ? (
+              <div className="space-y-4">
+                {[1, 2, 3, 4, 5].map((i) => (
+                  <div key={i} className="p-4 border rounded-lg">
+                    <Skeleton className="h-6 w-3/4 mb-3" />
+                    <Skeleton className="h-4 w-1/2 mb-2" />
+                    <Skeleton className="h-4 w-2/3 mb-2" />
+                    <Skeleton className="h-4 w-1/2" />
                   </div>
-                  <div className="space-y-1 mb-4">
-                    <div className="text-sm text-muted-foreground">
-                      <span>Tipo: {survey.type}</span>
+                ))}
+              </div>
+            ) : recentReports.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                Nenhum relatório encontrado
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {recentReports.map((report) => (
+                  <div key={report.id} className="p-4 border rounded-lg bg-card">
+                    <div className="flex items-start justify-between mb-3">
+                      <h4 className="font-medium text-foreground">
+                        {report.municipalities?.name || 'Município não informado'}
+                      </h4>
+                      {getStatusBadge(report.status)}
                     </div>
-                    <div className="text-sm text-muted-foreground">
-                      <span>Revisor: {survey.reviewer}</span>
+                    <div className="space-y-1 mb-4">
+                      <div className="text-sm text-muted-foreground">
+                        <span>Título: {report.title}</span>
+                      </div>
+                      {report.description && (
+                        <div className="text-sm text-muted-foreground line-clamp-2">
+                          <span>Descrição: {report.description}</span>
+                        </div>
+                      )}
+                      <div className="text-sm text-muted-foreground">
+                        <span>Autor: {report.profiles?.full_name || 'Não informado'}</span>
+                      </div>
+                      <div className="text-sm text-muted-foreground">
+                        <span>Data: {formatDate(report.created_at)}</span>
+                      </div>
                     </div>
-                    <div className="text-sm text-muted-foreground">
-                      <span>Data: {survey.date}</span>
-                    </div>
+                    <Button 
+                      className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"
+                      onClick={() => handleViewDetails(report)}
+                    >
+                      Ver Detalhes
+                    </Button>
                   </div>
-                  <Button 
-                    className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"
-                    onClick={() => handleViewDetails(survey)}
-                  >
-                    Ver Detalhes
-                  </Button>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -187,27 +361,37 @@ const Dashboard = () => {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <CheckCircle className="h-4 w-4 text-success" />
-                  <span className="text-sm">Aprovadas</span>
-                </div>
-                <span className="font-medium">847</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Clock className="h-4 w-4 text-warning" />
-                  <span className="text-sm">Pendentes</span>
-                </div>
-                <span className="font-medium">156</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <AlertTriangle className="h-4 w-4 text-destructive" />
-                  <span className="text-sm">Rejeitadas</span>
-                </div>
-                <span className="font-medium">23</span>
-              </div>
+              {isLoading ? (
+                <>
+                  <Skeleton className="h-6 w-full" />
+                  <Skeleton className="h-6 w-full" />
+                  <Skeleton className="h-6 w-full" />
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle className="h-4 w-4 text-success" />
+                      <span className="text-sm">Aprovadas</span>
+                    </div>
+                    <span className="font-medium">{approvedCount}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Clock className="h-4 w-4 text-warning" />
+                      <span className="text-sm">Pendentes</span>
+                    </div>
+                    <span className="font-medium">{pendingCount}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className="h-4 w-4 text-destructive" />
+                      <span className="text-sm">Rejeitadas</span>
+                    </div>
+                    <span className="font-medium">{rejectedCount}</span>
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
 
