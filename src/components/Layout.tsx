@@ -27,6 +27,7 @@ import {
   SidebarTrigger,
   useSidebar 
 } from "@/components/ui/sidebar";
+import { Skeleton } from "@/components/ui/skeleton";
 import { 
   BarChart3, 
   Users, 
@@ -37,10 +38,43 @@ import {
   Menu,
   Bell,
   Search,
-  User
+  User,
+  Shield,
+  FlaskConical,
+  LineChart,
+  Briefcase
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
+import { useUserProfile } from "@/hooks/useUserProfile";
+import { useUserRole } from "@/hooks/useUserRole";
+
+// Helper function to get initials from name
+const getInitials = (name: string | null | undefined): string => {
+  if (!name) return "??";
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) {
+    return parts[0].substring(0, 2).toUpperCase();
+  }
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+};
+
+// Helper function to get role display info
+const getRoleInfo = (role: string | null) => {
+  switch (role) {
+    case 'administrator':
+      return { label: 'Administrador', icon: Shield, color: 'text-primary' };
+    case 'researcher':
+      return { label: 'Pesquisador', icon: FlaskConical, color: 'text-blue-500' };
+    case 'analyst':
+      return { label: 'Analista', icon: LineChart, color: 'text-amber-500' };
+    case 'coordinator':
+      return { label: 'Coordenador', icon: Briefcase, color: 'text-purple-500' };
+    default:
+      return { label: 'Usuário', icon: User, color: 'text-muted-foreground' };
+  }
+};
 
 const Layout = () => {
   const navigate = useNavigate();
@@ -57,6 +91,14 @@ const Layout = () => {
     }
   ]);
 
+  // Auth and user data hooks - synced with database in real-time
+  const { user, loading: authLoading, signOut } = useAuth();
+  const { profile, loading: profileLoading } = useUserProfile(user?.id);
+  const { role, loading: roleLoading } = useUserRole(user?.id);
+
+  const isUserDataLoading = authLoading || profileLoading || roleLoading;
+  const roleInfo = getRoleInfo(role);
+
   const menuItems = [
     { title: "Dashboard", url: "/dashboard", icon: BarChart3 },
     { title: "Usuários", url: "/users", icon: Users },
@@ -66,17 +108,22 @@ const Layout = () => {
     { title: "Configurações", url: "/settings", icon: Settings },
   ];
 
-  const handleLogout = () => {
-    // Clear authentication tokens
-    localStorage.removeItem('authToken');
-    localStorage.removeItem('user');
-    
-    toast({
-      title: "Logout realizado",
-      description: "Você foi desconectado com sucesso.",
-    });
-    
-    navigate("/login");
+  const handleLogout = async () => {
+    try {
+      await signOut();
+      toast({
+        title: "Logout realizado",
+        description: "Você foi desconectado com sucesso.",
+      });
+      navigate("/login");
+    } catch (error) {
+      console.error('Logout error:', error);
+      toast({
+        title: "Erro",
+        description: "Falha ao realizar logout.",
+        variant: "destructive",
+      });
+    }
   };
 
   const markNotificationAsRead = (id: number) => {
@@ -180,21 +227,63 @@ const Layout = () => {
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" className="h-auto p-1">
                     <div className="flex items-center gap-2">
-                      <Avatar className="h-8 w-8">
-                        <AvatarImage src="/placeholder-avatar.jpg" />
-                        <AvatarFallback className="bg-primary text-primary-foreground">
-                          AD
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="hidden sm:flex flex-col items-start">
-                        <span className="text-sm font-medium">Administrador</span>
-                        <span className="text-xs text-muted-foreground">admin@geocidades.gov.br</span>
-                      </div>
+                      {isUserDataLoading ? (
+                        <>
+                          <Skeleton className="h-8 w-8 rounded-full" />
+                          <div className="hidden sm:flex flex-col items-start gap-1">
+                            <Skeleton className="h-4 w-24" />
+                            <Skeleton className="h-3 w-32" />
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <Avatar className="h-8 w-8">
+                            <AvatarImage src="" />
+                            <AvatarFallback className="bg-primary text-primary-foreground">
+                              {getInitials(profile?.full_name)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="hidden sm:flex flex-col items-start">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-sm font-medium">
+                                {profile?.full_name || 'Usuário'}
+                              </span>
+                              <roleInfo.icon className={`h-3.5 w-3.5 ${roleInfo.color}`} />
+                            </div>
+                            <span className="text-xs text-muted-foreground">
+                              {user?.email || 'Sem email'}
+                            </span>
+                          </div>
+                        </>
+                      )}
                     </div>
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56">
-                  <DropdownMenuLabel>Minha Conta</DropdownMenuLabel>
+                <DropdownMenuContent align="end" className="w-64">
+                  <DropdownMenuLabel className="font-normal">
+                    <div className="flex flex-col space-y-1">
+                      <p className="text-sm font-medium leading-none">
+                        {profile?.full_name || 'Usuário'}
+                      </p>
+                      <p className="text-xs leading-none text-muted-foreground">
+                        {user?.email || 'Sem email'}
+                      </p>
+                      <div className="flex items-center gap-1.5 pt-1">
+                        <roleInfo.icon className={`h-3.5 w-3.5 ${roleInfo.color}`} />
+                        <span className={`text-xs ${roleInfo.color}`}>
+                          {roleInfo.label}
+                        </span>
+                        {profile?.status && (
+                          <Badge 
+                            variant={profile.status === 'active' ? 'default' : 'secondary'} 
+                            className="text-xs h-5 ml-1"
+                          >
+                            {profile.status === 'active' ? 'Ativo' : 'Inativo'}
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  </DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={() => navigate("/profile")}>
                     <User className="mr-2 h-4 w-4" />
