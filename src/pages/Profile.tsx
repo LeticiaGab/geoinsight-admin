@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,84 +7,197 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { CalendarDays, MapPin, User, Mail, Shield } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { CalendarDays, MapPin, Mail, Shield, Loader2 } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
+import { useUserProfile } from "@/hooks/useUserProfile";
+import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
+
+interface Report {
+  id: string;
+  title: string;
+  status: string;
+  created_at: string;
+  municipality: {
+    name: string;
+  } | null;
+}
 
 const Profile = () => {
   const [statusFilter, setStatusFilter] = useState("all");
+  const [reports, setReports] = useState<Report[]>([]);
+  const [reportsLoading, setReportsLoading] = useState(true);
+  const [editName, setEditName] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+  const [municipalityCount, setMunicipalityCount] = useState(0);
+  
+  const { user } = useAuth();
+  const { profile, loading: profileLoading, updateProfile } = useUserProfile(user?.id);
+  const { toast } = useToast();
 
-  // Mock user data
-  const user = {
-    name: "João Silva",
-    email: "joao.silva@geocidades.gov.br",
-    role: "Administrador",
-    avatar: "/placeholder-avatar.jpg",
-    joinDate: "2023-01-15",
-    surveysCreated: 45,
-    totalMunicipalities: 12
+  // Fetch user's reports
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const fetchReports = async () => {
+      try {
+        setReportsLoading(true);
+        const { data, error } = await supabase
+          .from('reports')
+          .select(`
+            id,
+            title,
+            status,
+            created_at,
+            municipality:municipalities(name)
+          `)
+          .eq('author_id', user.id)
+          .order('created_at', { ascending: false });
+
+        if (error) throw error;
+
+        // Transform data to handle the municipality relationship
+        const transformedData = (data || []).map(report => ({
+          ...report,
+          municipality: Array.isArray(report.municipality) 
+            ? report.municipality[0] || null 
+            : report.municipality
+        }));
+
+        setReports(transformedData);
+
+        // Get unique municipalities count
+        const uniqueMunicipalities = new Set(
+          transformedData
+            .filter(r => r.municipality?.name)
+            .map(r => r.municipality?.name)
+        );
+        setMunicipalityCount(uniqueMunicipalities.size);
+      } catch (error) {
+        console.error('Error fetching reports:', error);
+        toast({
+          title: 'Erro',
+          description: 'Falha ao carregar relatórios.',
+          variant: 'destructive',
+        });
+      } finally {
+        setReportsLoading(false);
+      }
+    };
+
+    fetchReports();
+
+    // Set up real-time subscription for reports
+    const channel = supabase
+      .channel(`user-reports-${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'reports',
+          filter: `author_id=eq.${user.id}`,
+        },
+        () => {
+          fetchReports();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id, toast]);
+
+  // Update edit name when profile loads
+  useEffect(() => {
+    if (profile?.full_name) {
+      setEditName(profile.full_name);
+    }
+  }, [profile?.full_name]);
+
+  const getRoleName = (role: string | null) => {
+    const roleNames: Record<string, string> = {
+      administrator: "Administrador",
+      researcher: "Pesquisador",
+      analyst: "Analista",
+      coordinator: "Coordenador",
+    };
+    return role ? roleNames[role] || role : "Usuário";
   };
 
-  // Mock surveys data
-  const surveys = [
-    {
-      id: "SRV-001",
-      municipality: "São Paulo",
-      status: "Validated",
-      dateCollected: "2024-01-20",
-      demands: 15
-    },
-    {
-      id: "SRV-002", 
-      municipality: "Rio de Janeiro",
-      status: "Pending",
-      dateCollected: "2024-01-18",
-      demands: 8
-    },
-    {
-      id: "SRV-003",
-      municipality: "Belo Horizonte", 
-      status: "Reviewed",
-      dateCollected: "2024-01-15",
-      demands: 12
-    },
-    {
-      id: "SRV-004",
-      municipality: "Salvador",
-      status: "Validated",
-      dateCollected: "2024-01-10",
-      demands: 20
-    },
-    {
-      id: "SRV-005",
-      municipality: "Brasília",
-      status: "Pending", 
-      dateCollected: "2024-01-08",
-      demands: 6
-    }
-  ];
-
   const getStatusBadge = (status: string) => {
-    const variants = {
-      "Pending": "secondary",
-      "Reviewed": "default", 
-      "Validated": "default"
-    } as const;
-    
-    const colors = {
-      "Pending": "bg-card text-card-foreground border border-border",
-      "Reviewed": "bg-primary text-primary-foreground",
-      "Validated": "bg-success text-success-foreground"
+    const colors: Record<string, string> = {
+      pending: "bg-card text-card-foreground border border-border",
+      approved: "bg-success text-success-foreground",
+      rejected: "bg-destructive text-destructive-foreground",
+    };
+
+    const labels: Record<string, string> = {
+      pending: "Pendente",
+      approved: "Aprovado",
+      rejected: "Rejeitado",
     };
 
     return (
-      <Badge className={colors[status as keyof typeof colors]}>
-        {status}
+      <Badge className={colors[status] || colors.pending}>
+        {labels[status] || status}
       </Badge>
     );
   };
 
-  const filteredSurveys = statusFilter === "all" 
-    ? surveys 
-    : surveys.filter(survey => survey.status.toLowerCase() === statusFilter.toLowerCase());
+  const filteredReports = statusFilter === "all" 
+    ? reports 
+    : reports.filter(report => report.status.toLowerCase() === statusFilter.toLowerCase());
+
+  const handleSaveProfile = async () => {
+    if (!editName.trim()) {
+      toast({
+        title: 'Erro',
+        description: 'O nome não pode estar vazio.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setIsSaving(true);
+    await updateProfile({ full_name: editName.trim() });
+    setIsSaving(false);
+  };
+
+  if (profileLoading) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <Skeleton className="h-9 w-48 mb-2" />
+          <Skeleton className="h-5 w-96" />
+        </div>
+        <div className="grid gap-6 md:grid-cols-3">
+          <Card className="md:col-span-1">
+            <CardHeader className="text-center">
+              <Skeleton className="w-24 h-24 rounded-full mx-auto mb-4" />
+              <Skeleton className="h-6 w-32 mx-auto mb-2" />
+              <Skeleton className="h-4 w-24 mx-auto" />
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-full" />
+            </CardContent>
+          </Card>
+          <Card className="md:col-span-2">
+            <CardHeader>
+              <Skeleton className="h-6 w-32 mb-2" />
+              <Skeleton className="h-4 w-48" />
+            </CardHeader>
+            <CardContent>
+              <Skeleton className="h-64 w-full" />
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -99,46 +212,57 @@ const Profile = () => {
         <Card className="md:col-span-1">
           <CardHeader className="text-center">
             <Avatar className="w-24 h-24 mx-auto mb-4">
-              <AvatarImage src={user.avatar} />
+              <AvatarImage src="" />
               <AvatarFallback className="bg-primary text-primary-foreground text-2xl">
-                {user.name.split(' ').map(n => n[0]).join('')}
+                {profile?.full_name?.split(' ').map(n => n[0]).join('').toUpperCase() || 'U'}
               </AvatarFallback>
             </Avatar>
-            <CardTitle className="text-xl">{user.name}</CardTitle>
+            <CardTitle className="text-xl">{profile?.full_name || 'Usuário'}</CardTitle>
             <CardDescription className="flex items-center justify-center gap-2">
               <Shield className="h-4 w-4" />
-              {user.role}
+              {getRoleName(profile?.role || null)}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-center gap-3">
               <Mail className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm">{user.email}</span>
+              <span className="text-sm truncate">{profile?.email || user?.email || 'N/A'}</span>
             </div>
             <div className="flex items-center gap-3">
               <CalendarDays className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm">Membro desde {new Date(user.joinDate).toLocaleDateString('pt-BR')}</span>
+              <span className="text-sm">
+                Membro desde {profile?.registration_date 
+                  ? new Date(profile.registration_date).toLocaleDateString('pt-BR') 
+                  : 'N/A'}
+              </span>
             </div>
             <div className="grid grid-cols-2 gap-4 pt-4 border-t">
               <div className="text-center">
-                <div className="text-2xl font-bold text-primary">{user.surveysCreated}</div>
-                <div className="text-xs text-muted-foreground">Pesquisas Criadas</div>
+                <div className="text-2xl font-bold text-primary">{reports.length}</div>
+                <div className="text-xs text-muted-foreground">Relatórios Criados</div>
               </div>
               <div className="text-center">
-                <div className="text-2xl font-bold text-primary">{user.totalMunicipalities}</div>
+                <div className="text-2xl font-bold text-primary">{municipalityCount}</div>
                 <div className="text-xs text-muted-foreground">Municípios</div>
               </div>
+            </div>
+            <div className="pt-2">
+              <Badge className={profile?.status === 'active' 
+                ? 'bg-success text-success-foreground' 
+                : 'bg-muted text-muted-foreground'}>
+                {profile?.status === 'active' ? 'Ativo' : 'Inativo'}
+              </Badge>
             </div>
           </CardContent>
         </Card>
 
-        {/* User Surveys */}
+        {/* User Reports */}
         <Card className="md:col-span-2">
           <CardHeader>
             <div className="flex justify-between items-center">
               <div>
-                <CardTitle>Minhas Pesquisas</CardTitle>
-                <CardDescription>Pesquisas criadas por você</CardDescription>
+                <CardTitle>Meus Relatórios</CardTitle>
+                <CardDescription>Relatórios criados por você</CardDescription>
               </div>
               <Select value={statusFilter} onValueChange={setStatusFilter}>
                 <SelectTrigger className="w-48">
@@ -147,44 +271,54 @@ const Profile = () => {
                 <SelectContent>
                   <SelectItem value="all">Todos os Status</SelectItem>
                   <SelectItem value="pending">Pendente</SelectItem>
-                  <SelectItem value="reviewed">Revisado</SelectItem>
-                  <SelectItem value="validated">Validado</SelectItem>
+                  <SelectItem value="approved">Aprovado</SelectItem>
+                  <SelectItem value="rejected">Rejeitado</SelectItem>
                 </SelectContent>
               </Select>
             </div>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>ID da Pesquisa</TableHead>
-                  <TableHead>Município</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Data Coletada</TableHead>
-                  <TableHead>Demandas</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredSurveys.map((survey) => (
-                  <TableRow key={survey.id}>
-                    <TableCell className="font-medium">{survey.id}</TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <MapPin className="h-4 w-4 text-muted-foreground" />
-                        {survey.municipality}
-                      </div>
-                    </TableCell>
-                    <TableCell>{getStatusBadge(survey.status)}</TableCell>
-                    <TableCell>{new Date(survey.dateCollected).toLocaleDateString('pt-BR')}</TableCell>
-                    <TableCell>{survey.demands}</TableCell>
-                  </TableRow>
+            {reportsLoading ? (
+              <div className="space-y-4">
+                {[1, 2, 3].map(i => (
+                  <Skeleton key={i} className="h-12 w-full" />
                 ))}
-              </TableBody>
-            </Table>
-            {filteredSurveys.length === 0 && (
-              <div className="text-center py-8 text-muted-foreground">
-                Nenhuma pesquisa encontrada com o filtro selecionado.
               </div>
+            ) : (
+              <>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Título</TableHead>
+                      <TableHead>Município</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Data Criação</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredReports.map((report) => (
+                      <TableRow key={report.id}>
+                        <TableCell className="font-medium">{report.title}</TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <MapPin className="h-4 w-4 text-muted-foreground" />
+                            {report.municipality?.name || 'N/A'}
+                          </div>
+                        </TableCell>
+                        <TableCell>{getStatusBadge(report.status)}</TableCell>
+                        <TableCell>{new Date(report.created_at).toLocaleDateString('pt-BR')}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+                {filteredReports.length === 0 && (
+                  <div className="text-center py-8 text-muted-foreground">
+                    {reports.length === 0 
+                      ? "Você ainda não criou nenhum relatório."
+                      : "Nenhum relatório encontrado com o filtro selecionado."}
+                  </div>
+                )}
+              </>
             )}
           </CardContent>
         </Card>
@@ -200,15 +334,31 @@ const Profile = () => {
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="name">Nome Completo</Label>
-              <Input id="name" defaultValue={user.name} />
+              <Input 
+                id="name" 
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                placeholder="Digite seu nome completo"
+              />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input id="email" type="email" defaultValue={user.email} />
+              <Label htmlFor="email">Email (somente leitura)</Label>
+              <Input 
+                id="email" 
+                type="email" 
+                value={profile?.email || user?.email || ''} 
+                disabled
+                className="bg-muted"
+              />
             </div>
           </div>
           <div className="flex justify-end mt-6">
-            <Button className="bg-primary hover:bg-primary-hover">
+            <Button 
+              className="bg-primary hover:bg-primary-hover"
+              onClick={handleSaveProfile}
+              disabled={isSaving || editName === profile?.full_name}
+            >
+              {isSaving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Salvar Alterações
             </Button>
           </div>
