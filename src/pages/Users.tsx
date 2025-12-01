@@ -7,9 +7,11 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Search, Pencil, Trash2, UserPlus, Filter, Users as UsersIcon, Loader2 } from "lucide-react";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Search, Pencil, Trash2, UserPlus, Filter, Users as UsersIcon, Loader2, ShieldAlert } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
+import { useUserRole } from "@/hooks/useUserRole";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
 
@@ -24,6 +26,7 @@ interface UserWithRole extends Profile {
 const Users = () => {
   const [users, setUsers] = useState<UserWithRole[]>([]);
   const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [roleFilter, setRoleFilter] = useState<UserRole | "all">("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -38,6 +41,8 @@ const Users = () => {
     status: "active"
   });
   const { toast } = useToast();
+  const { user: currentUser } = useAuth();
+  const { isAdmin, loading: roleLoading } = useUserRole(currentUser?.id);
 
   useEffect(() => {
     fetchUsers();
@@ -93,22 +98,29 @@ const Users = () => {
 
       if (rolesError) throw rolesError;
 
-      // Fetch auth users to get emails
-      const { data: authData, error: authError } = await supabase.auth.admin.listUsers();
-
-      if (authError) throw authError;
-
-      const authUsers = authData?.users || [];
+      // Try to get emails via edge function (admin only)
+      let emailMap: Record<string, string> = {};
+      try {
+        const { data, error } = await supabase.functions.invoke('admin-user-management', {
+          body: { action: 'list' }
+        });
+        
+        if (!error && data?.emails) {
+          emailMap = data.emails;
+        }
+      } catch (e) {
+        // Not admin or error - emails won't be available
+        console.log('Could not fetch emails - user may not be admin');
+      }
 
       // Combine the data
-      const usersWithRoles: UserWithRole[] = profiles.map(profile => {
-        const userRole = roles.find(r => r.user_id === profile.id);
-        const authUser = authUsers.find(u => u.id === profile.id);
+      const usersWithRoles: UserWithRole[] = (profiles || []).map(profile => {
+        const userRole = roles?.find(r => r.user_id === profile.id);
         
         return {
           ...profile,
           role: userRole?.role || 'researcher',
-          email: authUser?.email || 'N/A'
+          email: emailMap[profile.id] || 'N/A'
         };
       });
 
@@ -161,9 +173,6 @@ const Users = () => {
     user: { name: string; email: string; role?: UserRole }
   ) => {
     try {
-      // Get current admin user email
-      const { data: { user: currentUser } } = await supabase.auth.getUser();
-      
       if (!currentUser?.email) {
         console.log('No admin email found, skipping notification');
         return;
@@ -178,56 +187,66 @@ const Users = () => {
       });
     } catch (error) {
       console.error('Failed to send notification email:', error);
-      // Don't throw - email failure shouldn't break user operations
     }
   };
 
   const handleAddUser = async () => {
-    if (!newUser.name || !newUser.email || !newUser.password) {
+    // Validate inputs
+    if (!newUser.name.trim()) {
       toast({
         title: "Erro",
-        description: "Nome, email e senha são obrigatórios.",
+        description: "Nome é obrigatório.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (!newUser.email.trim()) {
+      toast({
+        title: "Erro",
+        description: "Email é obrigatório.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(newUser.email)) {
+      toast({
+        title: "Erro",
+        description: "Formato de email inválido.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (!newUser.password || newUser.password.length < 6) {
+      toast({
+        title: "Erro",
+        description: "Senha deve ter no mínimo 6 caracteres.",
         variant: "destructive"
       });
       return;
     }
 
     try {
-      setLoading(true);
+      setActionLoading(true);
 
-      // Create auth user
-      const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-        email: newUser.email,
-        password: newUser.password,
-        email_confirm: true,
-        user_metadata: {
-          full_name: newUser.name
+      // Call edge function to create user
+      const { data, error } = await supabase.functions.invoke('admin-user-management', {
+        body: {
+          action: 'create',
+          email: newUser.email.trim(),
+          password: newUser.password,
+          full_name: newUser.name.trim(),
+          role: newUser.role,
+          status: newUser.status
         }
       });
 
-      if (authError) throw authError;
-      if (!authData.user) throw new Error("Failed to create user");
-
-      // Create profile
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .insert({
-          id: authData.user.id,
-          full_name: newUser.name,
-          status: newUser.status
-        });
-
-      if (profileError) throw profileError;
-
-      // Assign role
-      const { error: roleError } = await supabase
-        .from('user_roles')
-        .insert({
-          user_id: authData.user.id,
-          role: newUser.role
-        });
-
-      if (roleError) throw roleError;
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
 
       // Send notification email
       await sendNotificationEmail('created', {
@@ -241,7 +260,7 @@ const Users = () => {
       
       toast({
         title: "Sucesso",
-        description: "Usuário adicionado com sucesso!"
+        description: "Usuário criado com sucesso!"
       });
 
       fetchUsers();
@@ -253,7 +272,7 @@ const Users = () => {
         variant: "destructive"
       });
     } finally {
-      setLoading(false);
+      setActionLoading(false);
     }
   };
 
@@ -270,7 +289,7 @@ const Users = () => {
   };
 
   const handleUpdateUser = async () => {
-    if (!selectedUser || !newUser.name) {
+    if (!selectedUser || !newUser.name.trim()) {
       toast({
         title: "Erro",
         description: "Nome é obrigatório.",
@@ -280,13 +299,13 @@ const Users = () => {
     }
 
     try {
-      setLoading(true);
+      setActionLoading(true);
 
       // Update profile
       const { error: profileError } = await supabase
         .from('profiles')
         .update({
-          full_name: newUser.name,
+          full_name: newUser.name.trim(),
           status: newUser.status
         })
         .eq('id', selectedUser.id);
@@ -326,44 +345,44 @@ const Users = () => {
         variant: "destructive"
       });
     } finally {
-      setLoading(false);
+      setActionLoading(false);
     }
   };
 
   const handleDeleteUser = async (userId: string) => {
     const userToDelete = users.find(u => u.id === userId);
     
+    if (!userToDelete) return;
+
+    // Prevent self-deletion
+    if (userId === currentUser?.id) {
+      toast({
+        title: "Erro",
+        description: "Você não pode excluir sua própria conta.",
+        variant: "destructive"
+      });
+      return;
+    }
+
     try {
-      setLoading(true);
+      setActionLoading(true);
 
-      // Delete user role
-      const { error: roleError } = await supabase
-        .from('user_roles')
-        .delete()
-        .eq('user_id', userId);
+      // Call edge function to delete user
+      const { data, error } = await supabase.functions.invoke('admin-user-management', {
+        body: {
+          action: 'delete',
+          user_id: userId
+        }
+      });
 
-      if (roleError) throw roleError;
-
-      // Delete profile
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .delete()
-        .eq('id', userId);
-
-      if (profileError) throw profileError;
-
-      // Delete auth user
-      const { error: authError } = await supabase.auth.admin.deleteUser(userId);
-
-      if (authError) throw authError;
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
 
       // Send notification email
-      if (userToDelete) {
-        await sendNotificationEmail('deleted', {
-          name: userToDelete.full_name,
-          email: userToDelete.email
-        });
-      }
+      await sendNotificationEmail('deleted', {
+        name: userToDelete.full_name,
+        email: userToDelete.email
+      });
 
       toast({
         title: "Sucesso",
@@ -379,7 +398,7 @@ const Users = () => {
         variant: "destructive"
       });
     } finally {
-      setLoading(false);
+      setActionLoading(false);
     }
   };
 
@@ -402,88 +421,99 @@ const Users = () => {
           </p>
         </div>
         
-        <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-          <DialogTrigger asChild>
-            <Button>
-              <UserPlus className="h-4 w-4 mr-2" />
-              Novo Usuário
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle>Adicionar Novo Usuário</DialogTitle>
-              <DialogDescription>
-                Cadastre um novo usuário no sistema
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="name">Nome Completo</Label>
-                <Input 
-                  id="name" 
-                  placeholder="Digite o nome completo" 
-                  value={newUser.name}
-                  onChange={(e) => setNewUser({...newUser, name: e.target.value})}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
-                <Input 
-                  id="email" 
-                  type="email" 
-                  placeholder="usuario@geocidades.gov.br" 
-                  value={newUser.email}
-                  onChange={(e) => setNewUser({...newUser, email: e.target.value})}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="password">Senha</Label>
-                <Input 
-                  id="password" 
-                  type="password" 
-                  placeholder="Mínimo 6 caracteres" 
-                  value={newUser.password}
-                  onChange={(e) => setNewUser({...newUser, password: e.target.value})}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="role">Perfil de Acesso</Label>
-                <Select value={newUser.role} onValueChange={(value: UserRole) => setNewUser({...newUser, role: value})}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione o perfil" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="researcher">Pesquisador</SelectItem>
-                    <SelectItem value="analyst">Analista</SelectItem>
-                    <SelectItem value="coordinator">Coordenador</SelectItem>
-                    <SelectItem value="administrator">Administrador</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="status">Status</Label>
-                <Select value={newUser.status} onValueChange={(value) => setNewUser({...newUser, status: value})}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione o status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="active">Ativo</SelectItem>
-                    <SelectItem value="inactive">Inativo</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setIsAddDialogOpen(false)} disabled={loading}>
-                Cancelar
+        {/* Admin-only Add User Button */}
+        {isAdmin && (
+          <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+            <DialogTrigger asChild>
+              <Button>
+                <UserPlus className="h-4 w-4 mr-2" />
+                Novo Usuário
               </Button>
-              <Button onClick={handleAddUser} disabled={loading}>
-                {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                Cadastrar Usuário
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle>Adicionar Novo Usuário</DialogTitle>
+                <DialogDescription>
+                  Cadastre um novo usuário no sistema
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <Label htmlFor="name">Nome Completo *</Label>
+                  <Input 
+                    id="name" 
+                    placeholder="Digite o nome completo" 
+                    value={newUser.name}
+                    onChange={(e) => setNewUser({...newUser, name: e.target.value})}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email *</Label>
+                  <Input 
+                    id="email" 
+                    type="email" 
+                    placeholder="usuario@exemplo.com" 
+                    value={newUser.email}
+                    onChange={(e) => setNewUser({...newUser, email: e.target.value})}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="password">Senha *</Label>
+                  <Input 
+                    id="password" 
+                    type="password" 
+                    placeholder="Mínimo 6 caracteres" 
+                    value={newUser.password}
+                    onChange={(e) => setNewUser({...newUser, password: e.target.value})}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="role">Perfil de Acesso</Label>
+                  <Select value={newUser.role} onValueChange={(value: UserRole) => setNewUser({...newUser, role: value})}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione o perfil" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="researcher">Pesquisador</SelectItem>
+                      <SelectItem value="analyst">Analista</SelectItem>
+                      <SelectItem value="coordinator">Coordenador</SelectItem>
+                      <SelectItem value="administrator">Administrador</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="status">Status</Label>
+                  <Select value={newUser.status} onValueChange={(value) => setNewUser({...newUser, status: value})}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione o status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="active">Ativo</SelectItem>
+                      <SelectItem value="inactive">Inativo</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsAddDialogOpen(false)} disabled={actionLoading}>
+                  Cancelar
+                </Button>
+                <Button onClick={handleAddUser} disabled={actionLoading}>
+                  {actionLoading && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                  Cadastrar Usuário
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        )}
+
+        {/* Show message for non-admins */}
+        {!roleLoading && !isAdmin && (
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <ShieldAlert className="h-4 w-4" />
+            <span className="text-sm">Somente visualização</span>
+          </div>
+        )}
       </div>
 
       {/* Stats Cards */}
@@ -584,7 +614,7 @@ const Users = () => {
                 <TableHead>Perfil</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Data de Registro</TableHead>
-                <TableHead className="text-right">Ações</TableHead>
+                {isAdmin && <TableHead className="text-right">Ações</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -606,95 +636,111 @@ const Users = () => {
                   <TableCell>{getRoleBadge(user.role)}</TableCell>
                   <TableCell>{getStatusBadge(user.status)}</TableCell>
                   <TableCell>{new Date(user.registration_date).toLocaleDateString('pt-BR')}</TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      <Button variant="ghost" size="sm" onClick={() => handleEditUser(user)} disabled={loading}>
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        className="text-destructive hover:text-destructive"
-                        onClick={() => handleDeleteUser(user.id)}
-                        disabled={user.role === "administrator" || loading}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
+                  {isAdmin && (
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          onClick={() => handleEditUser(user)} 
+                          disabled={actionLoading}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="text-destructive hover:text-destructive"
+                          onClick={() => handleDeleteUser(user.id)}
+                          disabled={user.id === currentUser?.id || actionLoading}
+                          title={user.id === currentUser?.id ? "Você não pode excluir sua própria conta" : "Excluir usuário"}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  )}
                 </TableRow>
               ))}
             </TableBody>
           </Table>
+          {filteredUsers.length === 0 && (
+            <div className="text-center py-8 text-muted-foreground">
+              Nenhum usuário encontrado.
+            </div>
+          )}
         </CardContent>
       </Card>
 
-      {/* Edit User Modal */}
-      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Editar Usuário</DialogTitle>
-            <DialogDescription>
-              Atualize as informações do usuário
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="edit-name">Nome Completo</Label>
-              <Input 
-                id="edit-name" 
-                placeholder="Digite o nome completo" 
-                value={newUser.name}
-                onChange={(e) => setNewUser({...newUser, name: e.target.value})}
-              />
+      {/* Edit User Modal - Admin only */}
+      {isAdmin && (
+        <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Editar Usuário</DialogTitle>
+              <DialogDescription>
+                Atualize as informações do usuário
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-name">Nome Completo *</Label>
+                <Input 
+                  id="edit-name" 
+                  placeholder="Digite o nome completo" 
+                  value={newUser.name}
+                  onChange={(e) => setNewUser({...newUser, name: e.target.value})}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-email">Email (somente leitura)</Label>
+                <Input 
+                  id="edit-email" 
+                  type="email" 
+                  value={newUser.email}
+                  disabled
+                  className="bg-muted"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-role">Perfil de Acesso</Label>
+                <Select value={newUser.role} onValueChange={(value: UserRole) => setNewUser({...newUser, role: value})}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione o perfil" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="researcher">Pesquisador</SelectItem>
+                    <SelectItem value="analyst">Analista</SelectItem>
+                    <SelectItem value="coordinator">Coordenador</SelectItem>
+                    <SelectItem value="administrator">Administrador</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-status">Status</Label>
+                <Select value={newUser.status} onValueChange={(value) => setNewUser({...newUser, status: value})}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione o status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="active">Ativo</SelectItem>
+                    <SelectItem value="inactive">Inativo</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-email">Email (somente leitura)</Label>
-              <Input 
-                id="edit-email" 
-                type="email" 
-                value={newUser.email}
-                disabled
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-role">Perfil de Acesso</Label>
-              <Select value={newUser.role} onValueChange={(value: UserRole) => setNewUser({...newUser, role: value})}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione o perfil" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="researcher">Pesquisador</SelectItem>
-                  <SelectItem value="analyst">Analista</SelectItem>
-                  <SelectItem value="coordinator">Coordenador</SelectItem>
-                  <SelectItem value="administrator">Administrador</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-status">Status</Label>
-              <Select value={newUser.status} onValueChange={(value) => setNewUser({...newUser, status: value})}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione o status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="active">Ativo</SelectItem>
-                  <SelectItem value="inactive">Inativo</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsEditDialogOpen(false)} disabled={loading}>
-              Cancelar
-            </Button>
-            <Button onClick={handleUpdateUser} disabled={loading}>
-              {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-              Atualizar Usuário
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsEditDialogOpen(false)} disabled={actionLoading}>
+                Cancelar
+              </Button>
+              <Button onClick={handleUpdateUser} disabled={actionLoading}>
+                {actionLoading && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                Atualizar Usuário
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 };
