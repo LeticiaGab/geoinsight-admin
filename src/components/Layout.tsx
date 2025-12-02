@@ -238,7 +238,7 @@ const Layout = () => {
                       ) : (
                         <>
                           <Avatar className="h-8 w-8">
-                            <AvatarImage src="" />
+                            <AvatarImage src={profile?.avatar_url || ''} />
                             <AvatarFallback className="bg-primary text-primary-foreground">
                               {getInitials(profile?.full_name)}
                             </AvatarFallback>
