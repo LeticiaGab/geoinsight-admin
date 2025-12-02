@@ -28,6 +28,7 @@ import {
   useSidebar 
 } from "@/components/ui/sidebar";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { 
   BarChart3, 
   Users, 
@@ -42,13 +43,17 @@ import {
   Shield,
   FlaskConical,
   LineChart,
-  Briefcase
+  Briefcase,
+  Check,
+  CheckCheck,
+  Trash2
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserProfile } from "@/hooks/useUserProfile";
 import { useUserRole } from "@/hooks/useUserRole";
+import { useNotifications } from "@/hooks/useNotifications";
 
 // Helper function to get initials from name
 const getInitials = (name: string | null | undefined): string => {
@@ -81,20 +86,18 @@ const Layout = () => {
   const location = useLocation();
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
-  const [notifications, setNotifications] = useState([
-    {
-      id: 1,
-      title: "Nova pesquisa atribuída a você",
-      timestamp: new Date().toLocaleString('pt-BR'),
-      read: false,
-      link: "/survey-review"
-    }
-  ]);
 
   // Auth and user data hooks - synced with database in real-time
   const { user, loading: authLoading, signOut } = useAuth();
   const { profile, loading: profileLoading } = useUserProfile(user?.id);
   const { role, loading: roleLoading } = useUserRole(user?.id);
+  const { 
+    notifications, 
+    unreadCount, 
+    markAsRead, 
+    markAllAsRead, 
+    deleteNotification 
+  } = useNotifications(user?.id);
 
   const isUserDataLoading = authLoading || profileLoading || roleLoading;
   const roleInfo = getRoleInfo(role);
@@ -126,15 +129,22 @@ const Layout = () => {
     }
   };
 
-  const markNotificationAsRead = (id: number) => {
-    setNotifications(prev => 
-      prev.map(notif => 
-        notif.id === id ? { ...notif, read: true } : notif
-      )
-    );
+  const getNotificationLink = (notification: { entity_type: string | null; entity_id: string | null }) => {
+    if (notification.entity_type === 'report') {
+      return '/survey-review';
+    }
+    return null;
   };
 
-  const unreadCount = notifications.filter(n => !n.read).length;
+  const handleNotificationClick = async (notification: { id: string; read: boolean; entity_type: string | null; entity_id: string | null }) => {
+    if (!notification.read) {
+      await markAsRead(notification.id);
+    }
+    const link = getNotificationLink(notification);
+    if (link) {
+      navigate(link);
+    }
+  };
 
   const handleNavigation = (url: string) => {
     navigate(url);
@@ -177,49 +187,89 @@ const Layout = () => {
                     <Bell className="h-4 w-4" />
                     {unreadCount > 0 && (
                       <Badge className="absolute -top-1 -right-1 h-5 w-5 text-xs p-0 flex items-center justify-center bg-destructive text-destructive-foreground">
-                        {unreadCount}
+                        {unreadCount > 99 ? '99+' : unreadCount}
                       </Badge>
                     )}
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-80 p-0" align="end">
-                  <div className="p-4 border-b">
+                <PopoverContent className="w-96 p-0" align="end">
+                  <div className="p-4 border-b flex items-center justify-between">
                     <h4 className="font-semibold">Notificações</h4>
+                    {unreadCount > 0 && (
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        className="h-8 text-xs"
+                        onClick={markAllAsRead}
+                      >
+                        <CheckCheck className="h-3 w-3 mr-1" />
+                        Marcar todas como lidas
+                      </Button>
+                    )}
                   </div>
-                  <div className="max-h-80 overflow-y-auto">
+                  <ScrollArea className="max-h-80">
                     {notifications.length === 0 ? (
-                      <div className="p-4 text-center text-muted-foreground">
-                        Nenhuma notificação
+                      <div className="p-8 text-center text-muted-foreground">
+                        <Bell className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                        <p className="text-sm">Nenhuma notificação</p>
                       </div>
                     ) : (
                       notifications.map((notification) => (
                         <div
                           key={notification.id}
-                          className={`p-4 border-b cursor-pointer hover:bg-muted/50 ${
-                            !notification.read ? "bg-muted/30" : ""
+                          className={`p-4 border-b cursor-pointer hover:bg-muted/50 transition-colors ${
+                            !notification.read ? "bg-primary/5" : ""
                           }`}
-                          onClick={() => {
-                            markNotificationAsRead(notification.id);
-                            if (notification.link) {
-                              navigate(notification.link);
-                            }
-                          }}
+                          onClick={() => handleNotificationClick(notification)}
                         >
                           <div className="flex justify-between items-start gap-2">
-                            <div className="flex-1">
-                              <p className="text-sm font-medium">{notification.title}</p>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <p className="text-sm font-medium truncate">{notification.title}</p>
+                                {!notification.read && (
+                                  <div className="h-2 w-2 bg-primary rounded-full flex-shrink-0"></div>
+                                )}
+                              </div>
+                              {notification.message && (
+                                <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                                  {notification.message}
+                                </p>
+                              )}
                               <p className="text-xs text-muted-foreground mt-1">
-                                {notification.timestamp}
+                                {new Date(notification.created_at).toLocaleString('pt-BR')}
                               </p>
                             </div>
-                            {!notification.read && (
-                              <div className="h-2 w-2 bg-primary rounded-full"></div>
-                            )}
+                            <div className="flex items-center gap-1 flex-shrink-0">
+                              {!notification.read && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-6 w-6"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    markAsRead(notification.id);
+                                  }}
+                                >
+                                  <Check className="h-3 w-3" />
+                                </Button>
+                              )}
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  deleteNotification(notification.id);
+                                }}
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            </div>
                           </div>
                         </div>
                       ))
                     )}
-                  </div>
+                  </ScrollArea>
                 </PopoverContent>
               </Popover>
 
