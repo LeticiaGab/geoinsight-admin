@@ -9,6 +9,7 @@ type UserRole = Database['public']['Enums']['app_role'];
 export interface UserProfile extends Profile {
   email: string;
   role: UserRole | null;
+  avatar_url: string | null;
 }
 
 export const useUserProfile = (userId: string | undefined) => {
@@ -91,7 +92,7 @@ export const useUserProfile = (userId: string | undefined) => {
     };
   }, [userId, toast]);
 
-  const updateProfile = async (updates: { full_name?: string }) => {
+  const updateProfile = async (updates: { full_name?: string; avatar_url?: string }) => {
     if (!userId) return { error: new Error('No user ID') };
 
     try {
@@ -119,5 +120,52 @@ export const useUserProfile = (userId: string | undefined) => {
     }
   };
 
-  return { profile, loading, updateProfile };
+  const uploadAvatar = async (file: File) => {
+    if (!userId) return { error: new Error('No user ID'), url: null };
+
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${userId}/avatar.${fileExt}`;
+
+      // Delete existing avatar if any
+      await supabase.storage.from('avatars').remove([fileName]);
+
+      // Upload new avatar
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(fileName, file, { upsert: true });
+
+      if (uploadError) throw uploadError;
+
+      // Get public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(fileName);
+
+      // Update profile with new avatar URL
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ avatar_url: publicUrl })
+        .eq('id', userId);
+
+      if (updateError) throw updateError;
+
+      toast({
+        title: 'Sucesso',
+        description: 'Avatar atualizado com sucesso!',
+      });
+
+      return { error: null, url: publicUrl };
+    } catch (error: any) {
+      console.error('Error uploading avatar:', error);
+      toast({
+        title: 'Erro',
+        description: 'Falha ao fazer upload do avatar.',
+        variant: 'destructive',
+      });
+      return { error, url: null };
+    }
+  };
+
+  return { profile, loading, updateProfile, uploadAvatar };
 };

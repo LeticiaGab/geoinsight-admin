@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { CalendarDays, MapPin, Mail, Shield, Loader2 } from "lucide-react";
+import { CalendarDays, MapPin, Mail, Shield, Loader2, Camera } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserProfile } from "@/hooks/useUserProfile";
 import { useToast } from "@/hooks/use-toast";
@@ -30,10 +30,12 @@ const Profile = () => {
   const [reportsLoading, setReportsLoading] = useState(true);
   const [editName, setEditName] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [municipalityCount, setMunicipalityCount] = useState(0);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   const { user } = useAuth();
-  const { profile, loading: profileLoading, updateProfile } = useUserProfile(user?.id);
+  const { profile, loading: profileLoading, updateProfile, uploadAvatar } = useUserProfile(user?.id);
   const { toast } = useToast();
 
   // Fetch user's reports
@@ -166,6 +168,44 @@ const Profile = () => {
     setIsSaving(false);
   };
 
+  const handleAvatarClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleAvatarChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      toast({
+        title: 'Erro',
+        description: 'Por favor, selecione um arquivo de imagem.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Validate file size (max 2MB)
+    if (file.size > 2 * 1024 * 1024) {
+      toast({
+        title: 'Erro',
+        description: 'A imagem deve ter no máximo 2MB.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setIsUploadingAvatar(true);
+    await uploadAvatar(file);
+    setIsUploadingAvatar(false);
+    
+    // Reset input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
   if (profileLoading) {
     return (
       <div className="space-y-6">
@@ -211,12 +251,32 @@ const Profile = () => {
         {/* User Information Card */}
         <Card className="md:col-span-1">
           <CardHeader className="text-center">
-            <Avatar className="w-24 h-24 mx-auto mb-4">
-              <AvatarImage src="" />
-              <AvatarFallback className="bg-primary text-primary-foreground text-2xl">
-                {profile?.full_name?.split(' ').map(n => n[0]).join('').toUpperCase() || 'U'}
-              </AvatarFallback>
-            </Avatar>
+            <div className="relative w-24 h-24 mx-auto mb-4 group">
+              <Avatar className="w-24 h-24">
+                <AvatarImage src={profile?.avatar_url || ''} />
+                <AvatarFallback className="bg-primary text-primary-foreground text-2xl">
+                  {profile?.full_name?.split(' ').map(n => n[0]).join('').toUpperCase() || 'U'}
+                </AvatarFallback>
+              </Avatar>
+              <button
+                onClick={handleAvatarClick}
+                disabled={isUploadingAvatar}
+                className="absolute inset-0 flex items-center justify-center bg-background/80 rounded-full opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer disabled:cursor-not-allowed"
+              >
+                {isUploadingAvatar ? (
+                  <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                ) : (
+                  <Camera className="h-6 w-6 text-primary" />
+                )}
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleAvatarChange}
+                className="hidden"
+              />
+            </div>
             <CardTitle className="text-xl">{profile?.full_name || 'Usuário'}</CardTitle>
             <CardDescription className="flex items-center justify-center gap-2">
               <Shield className="h-4 w-4" />
