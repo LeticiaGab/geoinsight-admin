@@ -5,76 +5,34 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search, Filter, Eye, CheckCircle, XCircle, Clock, FileText, Download } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Search, Eye, CheckCircle, XCircle, Clock, FileText, Download, RefreshCw, Edit } from "lucide-react";
+import { useSurveys, Survey, SurveyStatus } from "@/hooks/useSurveys";
+import { useAuth } from "@/hooks/useAuth";
+import { format } from "date-fns";
+import { ptBR } from "date-fns/locale";
 
 const Surveys = () => {
-  const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [typeFilter, setTypeFilter] = useState("all");
+  const { user } = useAuth();
+  const { 
+    filteredSurveys, 
+    stats, 
+    loading, 
+    filters, 
+    setFilters, 
+    municipalities, 
+    types,
+    updateSurveyStatus,
+    refreshSurveys 
+  } = useSurveys(user?.id);
 
-  // Mock survey data
-  const surveys = [
-    {
-      id: 1,
-      title: "Pesquisa de Infraestrutura Urbana",
-      municipality: "São Paulo",
-      type: "Infraestrutura",
-      status: "approved",
-      submittedBy: "João Silva",
-      reviewer: "Maria Santos",
-      submittedAt: "2024-01-15",
-      reviewedAt: "2024-01-16",
-      priority: "high"
-    },
-    {
-      id: 2,
-      title: "Avaliação do Transporte Público",
-      municipality: "Rio de Janeiro",
-      type: "Transporte",
-      status: "pending",
-      submittedBy: "Ana Costa",
-      reviewer: "Carlos Lima",
-      submittedAt: "2024-01-14",
-      reviewedAt: null,
-      priority: "medium"
-    },
-    {
-      id: 3,
-      title: "Pesquisa Habitacional",
-      municipality: "Belo Horizonte",
-      type: "Habitação",
-      status: "review",
-      submittedBy: "Pedro Oliveira",
-      reviewer: "Lucia Ferreira",
-      submittedAt: "2024-01-13",
-      reviewedAt: null,
-      priority: "low"
-    },
-    {
-      id: 4,
-      title: "Avaliação Educacional",
-      municipality: "Brasília",
-      type: "Educação",
-      status: "approved",
-      submittedBy: "Marina Souza",
-      reviewer: "Roberto Silva",
-      submittedAt: "2024-01-12",
-      reviewedAt: "2024-01-14",
-      priority: "high"
-    },
-    {
-      id: 5,
-      title: "Pesquisa de Saúde Pública",
-      municipality: "Salvador",
-      type: "Saúde",
-      status: "rejected",
-      submittedBy: "Carlos Mendes",
-      reviewer: "Ana Santos",
-      submittedAt: "2024-01-11",
-      reviewedAt: "2024-01-13",
-      priority: "medium"
-    }
-  ];
+  const [selectedSurvey, setSelectedSurvey] = useState<Survey | null>(null);
+  const [isViewModalOpen, setIsViewModalOpen] = useState(false);
+  const [reviewNotes, setReviewNotes] = useState("");
+  const [isUpdating, setIsUpdating] = useState(false);
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -124,21 +82,27 @@ const Surveys = () => {
     }
   };
 
-  const filteredSurveys = surveys.filter(survey => {
-    const matchesSearch = survey.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         survey.municipality.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         survey.submittedBy.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = statusFilter === "all" || survey.status === statusFilter;
-    const matchesType = typeFilter === "all" || survey.type === typeFilter;
-    return matchesSearch && matchesStatus && matchesType;
-  });
+  const formatDate = (dateString: string | null) => {
+    if (!dateString) return "-";
+    return format(new Date(dateString), "dd/MM/yyyy", { locale: ptBR });
+  };
 
-  const statusCounts = {
-    total: surveys.length,
-    approved: surveys.filter(s => s.status === "approved").length,
-    pending: surveys.filter(s => s.status === "pending").length,
-    review: surveys.filter(s => s.status === "review").length,
-    rejected: surveys.filter(s => s.status === "rejected").length,
+  const handleViewSurvey = (survey: Survey) => {
+    setSelectedSurvey(survey);
+    setReviewNotes(survey.description || "");
+    setIsViewModalOpen(true);
+  };
+
+  const handleUpdateStatus = async (newStatus: SurveyStatus) => {
+    if (!selectedSurvey || !user?.id) return;
+    
+    setIsUpdating(true);
+    const success = await updateSurveyStatus(selectedSurvey.id, newStatus, user.id, reviewNotes);
+    setIsUpdating(false);
+    
+    if (success) {
+      setIsViewModalOpen(false);
+    }
   };
 
   return (
@@ -151,47 +115,73 @@ const Surveys = () => {
             Revise, valide e gerencie pesquisas de campo
           </p>
         </div>
-        <Button>
-          <Download className="h-4 w-4 mr-2" />
-          Exportar Dados
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={refreshSurveys} disabled={loading}>
+            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+            Atualizar
+          </Button>
+          <Button>
+            <Download className="h-4 w-4 mr-2" />
+            Exportar Dados
+          </Button>
+        </div>
       </div>
 
-      {/* Status Overview */}
+      {/* Status Overview - Real-time stats from database */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <Card className="shadow-soft">
           <CardContent className="p-4 text-center">
-            <div className="text-2xl font-bold text-foreground">{statusCounts.total}</div>
+            {loading ? (
+              <Skeleton className="h-8 w-12 mx-auto mb-1" />
+            ) : (
+              <div className="text-2xl font-bold text-foreground">{stats.total}</div>
+            )}
             <div className="text-sm text-muted-foreground">Total</div>
           </CardContent>
         </Card>
         <Card className="shadow-soft">
           <CardContent className="p-4 text-center">
-            <div className="text-2xl font-bold text-success">{statusCounts.approved}</div>
+            {loading ? (
+              <Skeleton className="h-8 w-12 mx-auto mb-1" />
+            ) : (
+              <div className="text-2xl font-bold text-success">{stats.approved}</div>
+            )}
             <div className="text-sm text-muted-foreground">Aprovadas</div>
           </CardContent>
         </Card>
         <Card className="shadow-soft">
           <CardContent className="p-4 text-center">
-            <div className="text-2xl font-bold text-secondary">{statusCounts.pending}</div>
+            {loading ? (
+              <Skeleton className="h-8 w-12 mx-auto mb-1" />
+            ) : (
+              <div className="text-2xl font-bold text-muted-foreground">{stats.pending}</div>
+            )}
             <div className="text-sm text-muted-foreground">Pendentes</div>
           </CardContent>
         </Card>
         <Card className="shadow-soft">
           <CardContent className="p-4 text-center">
-            <div className="text-2xl font-bold text-warning">{statusCounts.review}</div>
+            {loading ? (
+              <Skeleton className="h-8 w-12 mx-auto mb-1" />
+            ) : (
+              <div className="text-2xl font-bold text-warning">{stats.review}</div>
+            )}
             <div className="text-sm text-muted-foreground">Em Revisão</div>
           </CardContent>
         </Card>
         <Card className="shadow-soft">
           <CardContent className="p-4 text-center">
-            <div className="text-2xl font-bold text-destructive">{statusCounts.rejected}</div>
+            {loading ? (
+              <Skeleton className="h-8 w-12 mx-auto mb-1" />
+            ) : (
+              <div className="text-2xl font-bold text-destructive">{stats.rejected}</div>
+            )}
             <div className="text-sm text-muted-foreground">Rejeitadas</div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Filters */}
+      {/* Filters - directly interact with database queries */}
       <Card className="shadow-soft">
         <CardContent className="p-6">
           <div className="flex flex-col lg:flex-row gap-4">
@@ -200,12 +190,12 @@ const Surveys = () => {
               <Input
                 placeholder="Buscar por título, município ou responsável..."
                 className="pl-9"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                value={filters.searchTerm}
+                onChange={(e) => setFilters({ searchTerm: e.target.value })}
               />
             </div>
-            <div className="flex gap-3">
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <div className="flex gap-3 flex-wrap">
+              <Select value={filters.status} onValueChange={(value) => setFilters({ status: value })}>
                 <SelectTrigger className="w-40">
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>
@@ -217,17 +207,26 @@ const Surveys = () => {
                   <SelectItem value="rejected">Rejeitado</SelectItem>
                 </SelectContent>
               </Select>
-              <Select value={typeFilter} onValueChange={setTypeFilter}>
+              <Select value={filters.type} onValueChange={(value) => setFilters({ type: value })}>
                 <SelectTrigger className="w-40">
                   <SelectValue placeholder="Tipo" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos Tipos</SelectItem>
-                  <SelectItem value="Infraestrutura">Infraestrutura</SelectItem>
-                  <SelectItem value="Transporte">Transporte</SelectItem>
-                  <SelectItem value="Habitação">Habitação</SelectItem>
-                  <SelectItem value="Educação">Educação</SelectItem>
-                  <SelectItem value="Saúde">Saúde</SelectItem>
+                  {types.map((type) => (
+                    <SelectItem key={type} value={type}>{type}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={filters.municipality} onValueChange={(value) => setFilters({ municipality: value })}>
+                <SelectTrigger className="w-48">
+                  <SelectValue placeholder="Município" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos Municípios</SelectItem>
+                  {municipalities.map((mun) => (
+                    <SelectItem key={mun} value={mun}>{mun}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -235,12 +234,16 @@ const Surveys = () => {
         </CardContent>
       </Card>
 
-      {/* Surveys Table */}
+      {/* Surveys Table - Real-time data from database */}
       <Card className="shadow-soft">
         <CardHeader>
           <CardTitle>Pesquisas Cadastradas</CardTitle>
           <CardDescription>
-            {filteredSurveys.length} pesquisa(s) encontrada(s)
+            {loading ? (
+              <Skeleton className="h-4 w-32" />
+            ) : (
+              `${filteredSurveys.length} pesquisa(s) encontrada(s)`
+            )}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -257,60 +260,191 @@ const Surveys = () => {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredSurveys.map((survey) => (
-                <TableRow key={survey.id}>
-                  <TableCell>
-                    <div>
-                      <div className="font-medium">{survey.title}</div>
-                      <div className="text-sm text-muted-foreground">{survey.municipality}</div>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline">{survey.type}</Badge>
-                  </TableCell>
-                  <TableCell>{getStatusBadge(survey.status)}</TableCell>
-                  <TableCell>{getPriorityBadge(survey.priority)}</TableCell>
-                  <TableCell>
-                    <div>
-                      <div className="text-sm font-medium">{survey.submittedBy}</div>
-                      {survey.reviewer && (
-                        <div className="text-xs text-muted-foreground">
-                          Revisor: {survey.reviewer}
-                        </div>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="text-sm">
-                      <div>Enviado: {survey.submittedAt}</div>
-                      {survey.reviewedAt && (
-                        <div className="text-xs text-muted-foreground">
-                          Revisado: {survey.reviewedAt}
-                        </div>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      <Button variant="ghost" size="sm">
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="sm">
-                        <FileText className="h-4 w-4" />
-                      </Button>
-                      {survey.status === "pending" && (
-                        <Button variant="outline" size="sm" className="text-success border-success">
-                          <CheckCircle className="h-4 w-4" />
-                        </Button>
-                      )}
-                    </div>
+              {loading ? (
+                // Loading skeleton rows
+                Array.from({ length: 5 }).map((_, i) => (
+                  <TableRow key={i}>
+                    <TableCell><Skeleton className="h-10 w-48" /></TableCell>
+                    <TableCell><Skeleton className="h-6 w-24" /></TableCell>
+                    <TableCell><Skeleton className="h-6 w-20" /></TableCell>
+                    <TableCell><Skeleton className="h-6 w-16" /></TableCell>
+                    <TableCell><Skeleton className="h-10 w-32" /></TableCell>
+                    <TableCell><Skeleton className="h-10 w-24" /></TableCell>
+                    <TableCell><Skeleton className="h-8 w-24 ml-auto" /></TableCell>
+                  </TableRow>
+                ))
+              ) : filteredSurveys.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                    Nenhuma pesquisa encontrada
                   </TableCell>
                 </TableRow>
-              ))}
+              ) : (
+                filteredSurveys.map((survey) => (
+                  <TableRow key={survey.id}>
+                    <TableCell>
+                      <div>
+                        <div className="font-medium">{survey.title}</div>
+                        <div className="text-sm text-muted-foreground">{survey.municipality_name}</div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline">{survey.type}</Badge>
+                    </TableCell>
+                    <TableCell>{getStatusBadge(survey.status)}</TableCell>
+                    <TableCell>{getPriorityBadge(survey.priority)}</TableCell>
+                    <TableCell>
+                      <div>
+                        <div className="text-sm font-medium">{survey.author_name || "N/A"}</div>
+                        {survey.reviewer_name && (
+                          <div className="text-xs text-muted-foreground">
+                            Revisor: {survey.reviewer_name}
+                          </div>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="text-sm">
+                        <div>Enviado: {formatDate(survey.created_at)}</div>
+                        {survey.reviewed_at && (
+                          <div className="text-xs text-muted-foreground">
+                            Revisado: {formatDate(survey.reviewed_at)}
+                          </div>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <Button variant="ghost" size="sm" onClick={() => handleViewSurvey(survey)}>
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="sm">
+                          <FileText className="h-4 w-4" />
+                        </Button>
+                        {survey.status === "pending" && (
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            className="text-success border-success"
+                            onClick={() => {
+                              setSelectedSurvey(survey);
+                              handleUpdateStatus("approved");
+                            }}
+                          >
+                            <CheckCircle className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
             </TableBody>
           </Table>
         </CardContent>
       </Card>
+
+      {/* Survey Details Modal */}
+      <Dialog open={isViewModalOpen} onOpenChange={setIsViewModalOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Detalhes da Pesquisa</DialogTitle>
+            <DialogDescription>
+              Revise os detalhes e atualize o status da pesquisa
+            </DialogDescription>
+          </DialogHeader>
+          
+          {selectedSurvey && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-sm font-medium">Título</Label>
+                  <p className="text-sm text-muted-foreground">{selectedSurvey.title}</p>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium">Município</Label>
+                  <p className="text-sm text-muted-foreground">{selectedSurvey.municipality_name}</p>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium">Tipo</Label>
+                  <p className="text-sm text-muted-foreground">{selectedSurvey.type}</p>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium">Prioridade</Label>
+                  <div className="mt-1">{getPriorityBadge(selectedSurvey.priority)}</div>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium">Responsável</Label>
+                  <p className="text-sm text-muted-foreground">{selectedSurvey.author_name || "N/A"}</p>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium">Revisor</Label>
+                  <p className="text-sm text-muted-foreground">{selectedSurvey.reviewer_name || "Não atribuído"}</p>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium">Data de Criação</Label>
+                  <p className="text-sm text-muted-foreground">{formatDate(selectedSurvey.created_at)}</p>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium">Data de Revisão</Label>
+                  <p className="text-sm text-muted-foreground">{formatDate(selectedSurvey.reviewed_at)}</p>
+                </div>
+              </div>
+              
+              <div>
+                <Label className="text-sm font-medium">Status Atual</Label>
+                <div className="mt-1">
+                  {getStatusBadge(selectedSurvey.status)}
+                </div>
+              </div>
+              
+              <div>
+                <Label htmlFor="review-notes">Descrição / Observações</Label>
+                <Textarea
+                  id="review-notes"
+                  value={reviewNotes}
+                  onChange={(e) => setReviewNotes(e.target.value)}
+                  placeholder="Adicione observações sobre a revisão..."
+                  className="mt-1"
+                />
+              </div>
+            </div>
+          )}
+          
+          <DialogFooter className="flex gap-2">
+            <Button 
+              variant="outline" 
+              onClick={() => setIsViewModalOpen(false)}
+              disabled={isUpdating}
+            >
+              Fechar
+            </Button>
+            <Button 
+              variant="destructive"
+              onClick={() => handleUpdateStatus("rejected")}
+              disabled={isUpdating}
+            >
+              <XCircle className="h-4 w-4 mr-2" />
+              Rejeitar
+            </Button>
+            <Button 
+              variant="secondary"
+              onClick={() => handleUpdateStatus("review")}
+              disabled={isUpdating}
+            >
+              <Edit className="h-4 w-4 mr-2" />
+              Em Revisão
+            </Button>
+            <Button 
+              onClick={() => handleUpdateStatus("approved")}
+              disabled={isUpdating}
+            >
+              <CheckCircle className="h-4 w-4 mr-2" />
+              Aprovar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

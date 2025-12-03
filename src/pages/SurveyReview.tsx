@@ -5,173 +5,90 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Search, Eye, Edit, CheckCircle, XCircle, Clock, Filter } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
-
-interface Survey {
-  id: string;
-  municipality: string;
-  collector: string;
-  status: "Pending" | "Reviewed" | "Validated" | "Rejected";
-  type: string;
-  date: string;
-  location: string;
-  description: string;
-  notes?: string;
-}
-
-const mockSurveys: Survey[] = [
-  {
-    id: "SRV-001",
-    municipality: "São Paulo",
-    collector: "João Silva",
-    status: "Pending",
-    type: "Infraestrutura",
-    date: "2024-01-15",
-    location: "Centro - Rua XV de Novembro",
-    description: "Avaliação de calçadas e acessibilidade no centro da cidade",
-  },
-  {
-    id: "SRV-002", 
-    municipality: "Rio de Janeiro",
-    collector: "Maria Santos",
-    status: "Reviewed",
-    type: "Transporte",
-    date: "2024-01-14",
-    location: "Copacabana - Av. Atlântica",
-    description: "Análise do sistema de transporte público na orla",
-  },
-  {
-    id: "SRV-003",
-    municipality: "Belo Horizonte",
-    collector: "Ana Costa",
-    status: "Validated",
-    type: "Habitação",
-    date: "2024-01-13",
-    location: "Savassi - Rua Pernambuco",
-    description: "Levantamento habitacional na região central",
-  },
-  {
-    id: "SRV-004",
-    municipality: "Brasília",
-    collector: "Carlos Lima",
-    status: "Pending",
-    type: "Educação",
-    date: "2024-01-12",
-    location: "Asa Norte - Quadra 402",
-    description: "Avaliação de equipamentos educacionais",
-  },
-  {
-    id: "SRV-005",
-    municipality: "Salvador",
-    collector: "Lucia Ferreira",
-    status: "Rejected",
-    type: "Saúde",
-    date: "2024-01-11",
-    location: "Pelourinho - Largo do Pelourinho",
-    description: "Pesquisa sobre unidades de saúde no centro histórico",
-    notes: "Dados incompletos, necessária nova coleta"
-  },
-];
+import { Skeleton } from "@/components/ui/skeleton";
+import { Search, Eye, Edit, CheckCircle, XCircle, Clock, Filter, RefreshCw } from "lucide-react";
+import { useSurveys, Survey, SurveyStatus } from "@/hooks/useSurveys";
+import { useAuth } from "@/hooks/useAuth";
+import { format } from "date-fns";
+import { ptBR } from "date-fns/locale";
 
 const SurveyReview = () => {
-  const [surveys, setSurveys] = useState<Survey[]>(mockSurveys);
+  const { user } = useAuth();
+  const { 
+    filteredSurveys, 
+    stats, 
+    loading, 
+    filters, 
+    setFilters, 
+    municipalities,
+    updateSurveyStatus,
+    refreshSurveys 
+  } = useSurveys(user?.id);
+
   const [selectedSurvey, setSelectedSurvey] = useState<Survey | null>(null);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [municipalityFilter, setMunicipalityFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("all");
   const [reviewNotes, setReviewNotes] = useState("");
-  const { toast } = useToast();
+  const [isUpdating, setIsUpdating] = useState(false);
 
-  const municipalities = ["São Paulo", "Rio de Janeiro", "Belo Horizonte", "Brasília", "Salvador"];
-  const statuses = ["Pending", "Reviewed", "Validated", "Rejected"];
+  const formatDate = (dateString: string | null) => {
+    if (!dateString) return "-";
+    return format(new Date(dateString), "dd/MM/yyyy", { locale: ptBR });
+  };
 
-  const filteredSurveys = surveys.filter(survey => {
-    const matchesSearch = survey.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         survey.municipality.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         survey.collector.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesMunicipality = municipalityFilter === "all" || survey.municipality === municipalityFilter;
-    const matchesStatus = statusFilter === "all" || survey.status === statusFilter;
-    
-    return matchesSearch && matchesMunicipality && matchesStatus;
-  });
-
-  const getStatusBadge = (status: Survey['status']) => {
-    const variants = {
-      "Pending": "default",
-      "Reviewed": "secondary", 
-      "Validated": "default",
-      "Rejected": "destructive"
-    } as const;
-
-    const labels = {
-      "Pending": "Pendente",
-      "Reviewed": "Revisada",
-      "Validated": "Validada",
-      "Rejected": "Rejeitada"
+  const getStatusBadge = (status: string) => {
+    const config: Record<string, { variant: "default" | "secondary" | "destructive" | "outline"; label: string; Icon: typeof Clock }> = {
+      pending: { variant: "default", label: "Pendente", Icon: Clock },
+      review: { variant: "secondary", label: "Revisada", Icon: Edit },
+      approved: { variant: "default", label: "Validada", Icon: CheckCircle },
+      rejected: { variant: "destructive", label: "Rejeitada", Icon: XCircle },
     };
 
-    const icons = {
-      "Pending": Clock,
-      "Reviewed": Edit,
-      "Validated": CheckCircle,
-      "Rejected": XCircle
-    };
-
-    const Icon = icons[status];
+    const { variant, label, Icon } = config[status] || { variant: "outline", label: status, Icon: Clock };
 
     return (
-      <Badge variant={variants[status]} className="flex items-center gap-1">
+      <Badge variant={variant} className="flex items-center gap-1 w-fit">
         <Icon className="h-3 w-3" />
-        {labels[status]}
+        {label}
       </Badge>
     );
   };
 
   const handleViewSurvey = (survey: Survey) => {
     setSelectedSurvey(survey);
-    setReviewNotes(survey.notes || "");
+    setReviewNotes(survey.description || "");
     setIsViewModalOpen(true);
   };
 
-  const handleUpdateStatus = (newStatus: Survey['status']) => {
-    if (!selectedSurvey) return;
-
-    const updatedSurveys = surveys.map(survey =>
-      survey.id === selectedSurvey.id 
-        ? { ...survey, status: newStatus, notes: reviewNotes }
-        : survey
-    );
-
-    setSurveys(updatedSurveys);
-    setIsViewModalOpen(false);
+  const handleUpdateStatus = async (newStatus: SurveyStatus) => {
+    if (!selectedSurvey || !user?.id) return;
     
-    const statusLabels = {
-      "Validated": "validada",
-      "Rejected": "rejeitada",
-      "Reviewed": "marcada como revisada",
-      "Pending": "marcada como pendente"
-    };
-
-    toast({
-      title: "Status Atualizado",
-      description: `Pesquisa ${selectedSurvey.id} foi ${statusLabels[newStatus]} com sucesso!`
-    });
+    setIsUpdating(true);
+    const success = await updateSurveyStatus(selectedSurvey.id, newStatus, user.id, reviewNotes);
+    setIsUpdating(false);
+    
+    if (success) {
+      setIsViewModalOpen(false);
+    }
   };
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">Revisão de Pesquisas</h1>
-        <p className="text-muted-foreground">Revise, valide e gerencie as pesquisas coletadas em campo</p>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">Revisão de Pesquisas</h1>
+          <p className="text-muted-foreground">Revise, valide e gerencie as pesquisas coletadas em campo</p>
+        </div>
+        <Button variant="outline" onClick={refreshSurveys} disabled={loading}>
+          <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+          Atualizar
+        </Button>
       </div>
 
-      {/* Stats Cards */}
+      {/* Stats Cards - Real-time from database */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -179,21 +96,25 @@ const SurveyReview = () => {
             <Clock className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
-              {surveys.filter(s => s.status === "Pending").length}
-            </div>
+            {loading ? (
+              <Skeleton className="h-8 w-12" />
+            ) : (
+              <div className="text-2xl font-bold">{stats.pending}</div>
+            )}
           </CardContent>
         </Card>
         
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Revisadas</CardTitle>
+            <CardTitle className="text-sm font-medium">Em Revisão</CardTitle>
             <Edit className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
-              {surveys.filter(s => s.status === "Reviewed").length}
-            </div>
+            {loading ? (
+              <Skeleton className="h-8 w-12" />
+            ) : (
+              <div className="text-2xl font-bold">{stats.review}</div>
+            )}
           </CardContent>
         </Card>
         
@@ -203,9 +124,11 @@ const SurveyReview = () => {
             <CheckCircle className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
-              {surveys.filter(s => s.status === "Validated").length}
-            </div>
+            {loading ? (
+              <Skeleton className="h-8 w-12" />
+            ) : (
+              <div className="text-2xl font-bold">{stats.approved}</div>
+            )}
           </CardContent>
         </Card>
         
@@ -215,14 +138,16 @@ const SurveyReview = () => {
             <XCircle className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
-              {surveys.filter(s => s.status === "Rejected").length}
-            </div>
+            {loading ? (
+              <Skeleton className="h-8 w-12" />
+            ) : (
+              <div className="text-2xl font-bold">{stats.rejected}</div>
+            )}
           </CardContent>
         </Card>
       </div>
 
-      {/* Filters */}
+      {/* Filters - Database-driven */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -237,9 +162,9 @@ const SurveyReview = () => {
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder="ID, município ou coletor..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder="ID, título, município ou coletor..."
+                  value={filters.searchTerm}
+                  onChange={(e) => setFilters({ searchTerm: e.target.value })}
                   className="pl-9"
                 />
               </div>
@@ -247,7 +172,7 @@ const SurveyReview = () => {
 
             <div className="space-y-2">
               <Label>Município</Label>
-              <Select value={municipalityFilter} onValueChange={setMunicipalityFilter}>
+              <Select value={filters.municipality} onValueChange={(value) => setFilters({ municipality: value })}>
                 <SelectTrigger>
                   <SelectValue placeholder="Todos os municípios" />
                 </SelectTrigger>
@@ -262,19 +187,16 @@ const SurveyReview = () => {
 
             <div className="space-y-2">
               <Label>Status</Label>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <Select value={filters.status} onValueChange={(value) => setFilters({ status: value })}>
                 <SelectTrigger>
                   <SelectValue placeholder="Todos os status" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos os status</SelectItem>
-                  {statuses.map(status => (
-                    <SelectItem key={status} value={status}>
-                      {status === "Pending" ? "Pendente" : 
-                       status === "Reviewed" ? "Revisada" : 
-                       status === "Validated" ? "Validada" : "Rejeitada"}
-                    </SelectItem>
-                  ))}
+                  <SelectItem value="pending">Pendente</SelectItem>
+                  <SelectItem value="review">Em Revisão</SelectItem>
+                  <SelectItem value="approved">Validada</SelectItem>
+                  <SelectItem value="rejected">Rejeitada</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -282,12 +204,16 @@ const SurveyReview = () => {
         </CardContent>
       </Card>
 
-      {/* Surveys Table */}
+      {/* Surveys Table - Real-time data */}
       <Card>
         <CardHeader>
           <CardTitle>Pesquisas para Revisão</CardTitle>
           <CardDescription>
-            {filteredSurveys.length} pesquisa(s) encontrada(s)
+            {loading ? (
+              <Skeleton className="h-4 w-40" />
+            ) : (
+              `${filteredSurveys.length} pesquisa(s) encontrada(s)`
+            )}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -295,9 +221,9 @@ const SurveyReview = () => {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>ID da Pesquisa</TableHead>
+                  <TableHead>Título</TableHead>
                   <TableHead>Município</TableHead>
-                  <TableHead>Coletor</TableHead>
+                  <TableHead>Responsável</TableHead>
                   <TableHead>Tipo</TableHead>
                   <TableHead>Data</TableHead>
                   <TableHead>Status</TableHead>
@@ -305,7 +231,19 @@ const SurveyReview = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredSurveys.length === 0 ? (
+                {loading ? (
+                  Array.from({ length: 5 }).map((_, i) => (
+                    <TableRow key={i}>
+                      <TableCell><Skeleton className="h-5 w-40" /></TableCell>
+                      <TableCell><Skeleton className="h-5 w-28" /></TableCell>
+                      <TableCell><Skeleton className="h-5 w-28" /></TableCell>
+                      <TableCell><Skeleton className="h-5 w-24" /></TableCell>
+                      <TableCell><Skeleton className="h-5 w-24" /></TableCell>
+                      <TableCell><Skeleton className="h-6 w-20" /></TableCell>
+                      <TableCell><Skeleton className="h-8 w-8 ml-auto" /></TableCell>
+                    </TableRow>
+                  ))
+                ) : filteredSurveys.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                       Nenhuma pesquisa encontrada com os filtros aplicados
@@ -314,11 +252,11 @@ const SurveyReview = () => {
                 ) : (
                   filteredSurveys.map((survey) => (
                     <TableRow key={survey.id}>
-                      <TableCell className="font-medium">{survey.id}</TableCell>
-                      <TableCell>{survey.municipality}</TableCell>
-                      <TableCell>{survey.collector}</TableCell>
+                      <TableCell className="font-medium">{survey.title}</TableCell>
+                      <TableCell>{survey.municipality_name}</TableCell>
+                      <TableCell>{survey.author_name || "N/A"}</TableCell>
                       <TableCell>{survey.type}</TableCell>
-                      <TableCell>{new Date(survey.date).toLocaleDateString('pt-BR')}</TableCell>
+                      <TableCell>{formatDate(survey.created_at)}</TableCell>
                       <TableCell>{getStatusBadge(survey.status)}</TableCell>
                       <TableCell className="text-right">
                         <Button 
@@ -342,7 +280,7 @@ const SurveyReview = () => {
       <Dialog open={isViewModalOpen} onOpenChange={setIsViewModalOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Detalhes da Pesquisa - {selectedSurvey?.id}</DialogTitle>
+            <DialogTitle>Detalhes da Pesquisa</DialogTitle>
             <DialogDescription>
               Revise os detalhes e atualize o status da pesquisa
             </DialogDescription>
@@ -352,33 +290,34 @@ const SurveyReview = () => {
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label className="text-sm font-medium">Município</Label>
-                  <p className="text-sm text-muted-foreground">{selectedSurvey.municipality}</p>
+                  <Label className="text-sm font-medium">Título</Label>
+                  <p className="text-sm text-muted-foreground">{selectedSurvey.title}</p>
                 </div>
                 <div>
-                  <Label className="text-sm font-medium">Coletor</Label>
-                  <p className="text-sm text-muted-foreground">{selectedSurvey.collector}</p>
+                  <Label className="text-sm font-medium">Município</Label>
+                  <p className="text-sm text-muted-foreground">{selectedSurvey.municipality_name}</p>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium">Responsável</Label>
+                  <p className="text-sm text-muted-foreground">{selectedSurvey.author_name || "N/A"}</p>
                 </div>
                 <div>
                   <Label className="text-sm font-medium">Tipo</Label>
                   <p className="text-sm text-muted-foreground">{selectedSurvey.type}</p>
                 </div>
                 <div>
-                  <Label className="text-sm font-medium">Data</Label>
-                  <p className="text-sm text-muted-foreground">
-                    {new Date(selectedSurvey.date).toLocaleDateString('pt-BR')}
-                  </p>
+                  <Label className="text-sm font-medium">Data de Criação</Label>
+                  <p className="text-sm text-muted-foreground">{formatDate(selectedSurvey.created_at)}</p>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium">Data de Revisão</Label>
+                  <p className="text-sm text-muted-foreground">{formatDate(selectedSurvey.reviewed_at)}</p>
                 </div>
               </div>
               
               <div>
-                <Label className="text-sm font-medium">Localização</Label>
-                <p className="text-sm text-muted-foreground">{selectedSurvey.location}</p>
-              </div>
-              
-              <div>
-                <Label className="text-sm font-medium">Descrição</Label>
-                <p className="text-sm text-muted-foreground">{selectedSurvey.description}</p>
+                <Label className="text-sm font-medium">Revisor</Label>
+                <p className="text-sm text-muted-foreground">{selectedSurvey.reviewer_name || "Não atribuído"}</p>
               </div>
               
               <div>
@@ -405,25 +344,29 @@ const SurveyReview = () => {
             <Button 
               variant="outline" 
               onClick={() => setIsViewModalOpen(false)}
+              disabled={isUpdating}
             >
               Fechar
             </Button>
             <Button 
               variant="destructive"
-              onClick={() => handleUpdateStatus("Rejected")}
+              onClick={() => handleUpdateStatus("rejected")}
+              disabled={isUpdating}
             >
               <XCircle className="h-4 w-4 mr-2" />
               Rejeitar
             </Button>
             <Button 
               variant="secondary"
-              onClick={() => handleUpdateStatus("Reviewed")}
+              onClick={() => handleUpdateStatus("review")}
+              disabled={isUpdating}
             >
               <Edit className="h-4 w-4 mr-2" />
               Marcar como Revisada
             </Button>
             <Button 
-              onClick={() => handleUpdateStatus("Validated")}
+              onClick={() => handleUpdateStatus("approved")}
+              disabled={isUpdating}
             >
               <CheckCircle className="h-4 w-4 mr-2" />
               Validar
