@@ -1,73 +1,270 @@
-# Welcome to your Lovable project
+---
 
-## Project info
+# 🌐 **Geo-Cidades — README Oficial**
 
-**URL**: https://lovable.dev/projects/726ad9c8-0df9-499b-a075-ba8aa74a3bee
+Sistema desenvolvido para apoiar a **Revisão dos Planos Diretores Participativos Municipais**, permitindo a coleta, análise e visualização de dados territoriais, combinando tecnologias modernas de frontend, backend e serviços em nuvem.
 
-## How can I edit this code?
+---
 
-There are several ways of editing your application.
+# 📦 **Como Rodar o Projeto no Seu Computador**
 
-**Use Lovable**
+## ✅ **Pré-requisitos**
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/726ad9c8-0df9-499b-a075-ba8aa74a3bee) and start prompting.
+Antes de iniciar, você precisa ter instalado:
 
-Changes made via Lovable will be committed automatically to this repo.
+* **Node.js** (recomendado: versão 18+)
+* **npm**, **yarn**, **pnpm** ou **bun**
+  → O projeto utiliza *bun.lockb*, então *Bun* é recomendado:
 
-**Use your preferred IDE**
+  ```sh
+  curl -fsSL https://bun.sh/install | bash
+  ```
+* Acesso ao **Projeto no Supabase** (variáveis de ambiente)
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+---
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
+## 🔧 **1. Clone o Repositório**
 
 ```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+git clone <URL_DO_REPOSITORIO>
+cd <NOME_DO_PROJETO>
+```
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+---
 
-# Step 3: Install the necessary dependencies.
-npm i
+## 📁 **2. Instale as Dependências**
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
+Se estiver usando **Bun** (recomendado):
+
+```sh
+bun install
+```
+
+Ou use:
+
+```sh
+npm install
+```
+
+---
+
+## 🔐 **3. Configure as Variáveis de Ambiente**
+
+Crie um arquivo:
+
+```sh
+cp .env.example .env
+```
+
+E preencha com as chaves do Supabase:
+
+```
+VITE_SUPABASE_URL=https://xxxx.supabase.co
+VITE_SUPABASE_ANON_KEY=chave_anon
+```
+
+---
+
+## 🚀 **4. Execute o Servidor de Desenvolvimento**
+
+Com Bun:
+
+```sh
+bun dev
+```
+
+Ou:
+
+```sh
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+O sistema abrirá em:
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+```
+http://localhost:5173
+```
 
-**Use GitHub Codespaces**
+---
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+## 🏁 **5. Build Para Produção**
 
-## What technologies are used for this project?
+```sh
+bun run build
+```
 
-This project is built with:
+Os arquivos finais ficarão em `/dist`.
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+---
 
-## How can I deploy this project?
+# 🧠 **Explicação Completa das Tecnologias Utilizadas**
 
-Simply open [Lovable](https://lovable.dev/projects/726ad9c8-0df9-499b-a075-ba8aa74a3bee) and click on Share -> Publish.
+## 🖥️ **FRONTEND**
 
-## Can I connect a custom domain to my Lovable project?
+O frontend é construído com uma stack moderna, focada em performance e acessibilidade.
 
-Yes, you can!
+---
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+## 🔹 **Core:**
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+### **React 18**
+
+Biblioteca principal para construir interfaces dinâmicas, rápidas e modulares.
+
+### **TypeScript**
+
+Garante segurança de tipos, reduz erros e melhora a manutenção do código.
+
+### **Vite**
+
+Ferramenta extremamente rápida para desenvolvimento e build.
+
+---
+
+## 🔹 **Estilização & Design:**
+
+### **Tailwind CSS**
+
+Framework CSS utilitário para criar interfaces responsivas rapidamente.
+
+### **shadcn/ui**
+
+Coleção de componentes estilizados baseados em Radix UI.
+
+### **Radix UI**
+
+Componentes acessíveis e sem estilo, possibilitando criar uma UI consistente.
+
+### **Lucide React**
+
+Biblioteca moderna de ícones SVG.
+
+### **Recharts**
+
+Biblioteca de gráficos usada para visualizar dados urbanos.
+
+### **Vaul (Drawer)**
+
+Componente para criar *bottom sheets* e interações mobile-friendly.
+
+### **Embla Carousel**
+
+Cria carrosséis performáticos (útil para cards e galerias).
+
+---
+
+## 🔹 **Formulários e Validação:**
+
+### **React Hook Form**
+
+Controle leve e eficiente de formulários.
+
+### **Zod**
+
+Validação de schemas sincronizada com TypeScript.
+
+### **@hookform/resolvers**
+
+Ponte entre React Hook Form e Zod.
+
+---
+
+## 🔹 **Gerenciamento de Dados & Estado:**
+
+### **TanStack React Query**
+
+Gerencia cache, sincronização e estado de dados vindo do backend.
+
+---
+
+## 🔹 **Utilidades:**
+
+* **date-fns** — manipulação de datas
+* **clsx**, **tailwind-merge** — gerenciamento dinâmico de classes
+* **react-resizable-panels** — layouts ajustáveis
+* **next-themes** — gerenciamento de temas (dark/light)
+* **Sonner** — sistema de notificações
+
+---
+
+# 🗄️ **BACKEND (Supabase)**
+
+O projeto utiliza **Supabase**, uma plataforma Backend-as-a-Service que oferece:
+
+---
+
+## ⚙️ **Banco de Dados — PostgreSQL**
+
+O Supabase fornece um Postgres totalmente gerenciado.
+
+Tabelas principais do Geo-Cidades:
+
+* `municipalities`
+* `reports`
+* `profiles`
+* `user_roles`
+* Outras tabelas auxiliares para auditoria e logs
+
+### **RLS — Row Level Security**
+
+Camada de segurança nativa do PostgreSQL que controla quem pode acessar cada dado.
+
+---
+
+## ⛓️ **Edge Functions (Serverless no Deno)**
+
+### Funções utilizadas:
+
+* `export-data` → exporta relatórios em CSV/PDF
+* `seed-users` → cria usuários iniciais para o sistema
+* `send-user-notification` → envia e-mails de notificação
+
+Executadas com baixa latência diretamente na borda.
+
+---
+
+## ✉️ **Serviços Externos**
+
+### **Resend**
+
+Serviço usado para enviar:
+
+* Notificações de criação
+* Atualização
+* Exclusão de registros
+
+Integrado nas edge functions.
+
+---
+
+# 🔐 **Autenticação & Segurança**
+
+### **Supabase Auth**
+
+O sistema usa:
+
+* Login por e-mail/senha
+* Controle de sessão via localStorage
+* Tokens JWT
+* Fluxo de redefinição de senha
+
+### **Controle de Acesso por Papéis (RBAC)**
+
+Papéis disponíveis:
+
+* **Administrador**
+* **Pesquisador**
+* **Analista**
+* **Coordenador**
+
+Cada papel possui permissões específicas controladas por políticas RLS.
+
+---
+
+# 🏛️ **Arquitetura do Projeto**
+
+* Componentes React reutilizáveis e tipados
+* Hooks personalizados (`useTheme`, `useDataExport`, `use-toast`, etc.)
+* CSS tokens com variáveis semânticas
+* Design responsivo + Mobile First
+* Dark Mode como padrão
