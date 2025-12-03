@@ -30,13 +30,8 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { 
-  BarChart3, 
-  Users, 
-  FileText, 
   MapPin, 
-  Settings, 
   LogOut,
-  Menu,
   Bell,
   Search,
   User,
@@ -46,7 +41,8 @@ import {
   Briefcase,
   Check,
   CheckCheck,
-  Trash2
+  Trash2,
+  Settings
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
@@ -54,6 +50,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useUserProfile } from "@/hooks/useUserProfile";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useNotifications } from "@/hooks/useNotifications";
+import { useMenuPermissions, MenuItem } from "@/hooks/useMenuPermissions";
 
 // Helper function to get initials from name
 const getInitials = (name: string | null | undefined): string => {
@@ -99,17 +96,11 @@ const Layout = () => {
     deleteNotification 
   } = useNotifications(user?.id);
 
-  const isUserDataLoading = authLoading || profileLoading || roleLoading;
-  const roleInfo = getRoleInfo(role);
+  // Role-based menu permissions - automatically updates when role changes via real-time subscription
+  const { menuItems, loading: menuLoading } = useMenuPermissions(role, roleLoading);
 
-  const menuItems = [
-    { title: "Dashboard", url: "/dashboard", icon: BarChart3 },
-    { title: "Usuários", url: "/users", icon: Users },
-    { title: "Pesquisas", url: "/surveys", icon: FileText },
-    { title: "Municípios", url: "/municipalities", icon: MapPin },
-    { title: "Relatórios", url: "/reports", icon: BarChart3 },
-    { title: "Configurações", url: "/settings", icon: Settings },
-  ];
+  const isUserDataLoading = authLoading || profileLoading || roleLoading || menuLoading;
+  const roleInfo = getRoleInfo(role);
 
   const handleLogout = async () => {
     try {
@@ -155,11 +146,12 @@ const Layout = () => {
   return (
     <SidebarProvider>
       <div className="min-h-screen flex w-full bg-background">
-        {/* Sidebar */}
+        {/* Sidebar - dynamically filtered by user role from database */}
         <AppSidebar 
           menuItems={menuItems}
           onNavigate={handleNavigation}
           currentPath={location.pathname}
+          isLoading={menuLoading}
         />
 
         {/* Main Content */}
@@ -365,16 +357,13 @@ const Layout = () => {
 
 // Sidebar Component
 interface AppSidebarProps {
-  menuItems: Array<{
-    title: string;
-    url: string;
-    icon: React.ComponentType<any>;
-  }>;
+  menuItems: MenuItem[];
   onNavigate: (url: string) => void;
   currentPath: string;
+  isLoading?: boolean;
 }
 
-const AppSidebar = ({ menuItems, onNavigate, currentPath }: AppSidebarProps) => {
+const AppSidebar = ({ menuItems, onNavigate, currentPath, isLoading }: AppSidebarProps) => {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
 
@@ -396,24 +385,36 @@ const AppSidebar = ({ menuItems, onNavigate, currentPath }: AppSidebarProps) => 
 
       <SidebarContent className="px-3 py-4">
         <SidebarMenu>
-          {menuItems.map((item) => {
-            const isActive = currentPath === item.url;
-            return (
-              <SidebarMenuItem key={item.title}>
-                <SidebarMenuButton
-                  onClick={() => onNavigate(item.url)}
-                  className={`w-full justify-start ${
-                    isActive 
-                      ? "bg-primary text-primary-foreground hover:bg-primary/90" 
-                      : "hover:bg-accent hover:text-accent-foreground"
-                  }`}
-                >
-                  <item.icon className="h-4 w-4" />
-                  {!collapsed && <span className="ml-3">{item.title}</span>}
-                </SidebarMenuButton>
+          {isLoading ? (
+            // Show skeleton while loading permissions
+            Array.from({ length: 4 }).map((_, i) => (
+              <SidebarMenuItem key={i}>
+                <div className="flex items-center gap-3 px-3 py-2">
+                  <Skeleton className="h-4 w-4" />
+                  {!collapsed && <Skeleton className="h-4 w-24" />}
+                </div>
               </SidebarMenuItem>
-            );
-          })}
+            ))
+          ) : (
+            menuItems.map((item) => {
+              const isActive = currentPath === item.url;
+              return (
+                <SidebarMenuItem key={item.title}>
+                  <SidebarMenuButton
+                    onClick={() => onNavigate(item.url)}
+                    className={`w-full justify-start ${
+                      isActive 
+                        ? "bg-primary text-primary-foreground hover:bg-primary/90" 
+                        : "hover:bg-accent hover:text-accent-foreground"
+                    }`}
+                  >
+                    <item.icon className="h-4 w-4" />
+                    {!collapsed && <span className="ml-3">{item.title}</span>}
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              );
+            })
+          )}
         </SidebarMenu>
       </SidebarContent>
     </Sidebar>
