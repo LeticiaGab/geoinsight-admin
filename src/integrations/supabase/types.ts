@@ -114,8 +114,12 @@ export type Database = {
           description: string | null
           id: string
           municipality_id: string
+          priority: string | null
+          reviewed_at: string | null
+          reviewer_id: string | null
           status: string
           title: string
+          type: string | null
           updated_at: string
         }
         Insert: {
@@ -124,8 +128,12 @@ export type Database = {
           description?: string | null
           id?: string
           municipality_id: string
+          priority?: string | null
+          reviewed_at?: string | null
+          reviewer_id?: string | null
           status?: string
           title: string
+          type?: string | null
           updated_at?: string
         }
         Update: {
@@ -134,8 +142,12 @@ export type Database = {
           description?: string | null
           id?: string
           municipality_id?: string
+          priority?: string | null
+          reviewed_at?: string | null
+          reviewer_id?: string | null
           status?: string
           title?: string
+          type?: string | null
           updated_at?: string
         }
         Relationships: [
