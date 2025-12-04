@@ -9,11 +9,13 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Search, Eye, CheckCircle, XCircle, Clock, FileText, Download, RefreshCw, Edit } from "lucide-react";
+import { Search, Eye, CheckCircle, XCircle, Clock, FileText, Download, RefreshCw, Edit, Plus } from "lucide-react";
 import { useSurveys, Survey, SurveyStatus } from "@/hooks/useSurveys";
+import { useResearchSurveys } from "@/hooks/useResearchSurveys";
 import { useAuth } from "@/hooks/useAuth";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { CreateResearchForm } from "@/components/CreateResearchForm";
 
 const Surveys = () => {
   const { user } = useAuth();
@@ -29,8 +31,11 @@ const Surveys = () => {
     refreshSurveys 
   } = useSurveys(user?.id);
 
+  const { createResearch, refreshSurveys: refreshResearch } = useResearchSurveys(user?.id);
+
   const [selectedSurvey, setSelectedSurvey] = useState<Survey | null>(null);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [reviewNotes, setReviewNotes] = useState("");
   const [isUpdating, setIsUpdating] = useState(false);
 
@@ -120,9 +125,13 @@ const Surveys = () => {
             <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
             Atualizar
           </Button>
-          <Button>
+          <Button variant="outline">
             <Download className="h-4 w-4 mr-2" />
-            Exportar Dados
+            Exportar
+          </Button>
+          <Button onClick={() => setIsCreateModalOpen(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Criar Pesquisa
           </Button>
         </div>
       </div>
@@ -445,6 +454,20 @@ const Surveys = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Create Research Modal */}
+      <CreateResearchForm
+        open={isCreateModalOpen}
+        onOpenChange={setIsCreateModalOpen}
+        onSubmit={async (data, photos) => {
+          const success = await createResearch(data, photos);
+          if (success) {
+            refreshSurveys();
+            refreshResearch();
+          }
+          return success;
+        }}
+      />
     </div>
   );
 };
