@@ -160,6 +160,98 @@ export type Database = {
           },
         ]
       }
+      research_surveys: {
+        Row: {
+          author_id: string | null
+          building_condition: string
+          building_number: string | null
+          coordinate_x: string
+          coordinate_y: string
+          created_at: string
+          front_setback: boolean | null
+          id: string
+          left_side_setback: boolean | null
+          lot_boundary: string
+          municipality_id: string | null
+          number_of_floors: number | null
+          observations: string | null
+          occupation_status: string
+          photo_1_url: string | null
+          photo_2_url: string | null
+          photo_3_url: string | null
+          point_id: string
+          sidewalk: boolean | null
+          slope_direction: string | null
+          status: string
+          street: string
+          structure_material: string
+          type_of_use: string
+          updated_at: string
+        }
+        Insert: {
+          author_id?: string | null
+          building_condition: string
+          building_number?: string | null
+          coordinate_x: string
+          coordinate_y: string
+          created_at?: string
+          front_setback?: boolean | null
+          id?: string
+          left_side_setback?: boolean | null
+          lot_boundary: string
+          municipality_id?: string | null
+          number_of_floors?: number | null
+          observations?: string | null
+          occupation_status: string
+          photo_1_url?: string | null
+          photo_2_url?: string | null
+          photo_3_url?: string | null
+          point_id?: string
+          sidewalk?: boolean | null
+          slope_direction?: string | null
+          status?: string
+          street: string
+          structure_material: string
+          type_of_use: string
+          updated_at?: string
+        }
+        Update: {
+          author_id?: string | null
+          building_condition?: string
+          building_number?: string | null
+          coordinate_x?: string
+          coordinate_y?: string
+          created_at?: string
+          front_setback?: boolean | null
+          id?: string
+          left_side_setback?: boolean | null
+          lot_boundary?: string
+          municipality_id?: string | null
+          number_of_floors?: number | null
+          observations?: string | null
+          occupation_status?: string
+          photo_1_url?: string | null
+          photo_2_url?: string | null
+          photo_3_url?: string | null
+          point_id?: string
+          sidewalk?: boolean | null
+          slope_direction?: string | null
+          status?: string
+          street?: string
+          structure_material?: string
+          type_of_use?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "research_surveys_municipality_id_fkey"
+            columns: ["municipality_id"]
+            isOneToOne: false
+            referencedRelation: "municipalities"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           created_at: string
