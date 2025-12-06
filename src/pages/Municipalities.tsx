@@ -1,68 +1,65 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, Plus, Eye, Edit, Trash2, MapPin } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
+import { Search, Plus, Eye, Edit, Trash2, MapPin, FileText, ClipboardList, Loader2 } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useMunicipalities, MunicipalityWithCounts, MunicipalityFormData } from "@/hooks/useMunicipalities";
+import { format } from "date-fns";
+import { ptBR } from "date-fns/locale";
 
-interface Municipality {
-  id: string;
-  name: string;
-  state: string;
-  surveysCount: number;
-  demandsCount: number;
-  status: "Active" | "Inactive";
-}
-
-const mockMunicipalities: Municipality[] = [
-  { id: "1", name: "São Paulo", state: "SP", surveysCount: 45, demandsCount: 12, status: "Active" },
-  { id: "2", name: "Rio de Janeiro", state: "RJ", surveysCount: 32, demandsCount: 8, status: "Active" },
-  { id: "3", name: "Belo Horizonte", state: "MG", surveysCount: 28, demandsCount: 15, status: "Active" },
-  { id: "4", name: "Salvador", state: "BA", surveysCount: 19, demandsCount: 6, status: "Inactive" },
-  { id: "5", name: "Brasília", state: "DF", surveysCount: 41, demandsCount: 22, status: "Active" },
+const brazilianStates = [
+  "AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA",
+  "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI", "RJ", "RN",
+  "RS", "RO", "RR", "SC", "SP", "SE", "TO"
 ];
 
 const Municipalities = () => {
-  const [municipalities, setMunicipalities] = useState<Municipality[]>(mockMunicipalities);
+  const { municipalities, isLoading, stats, createMunicipality, updateMunicipality, deleteMunicipality } = useMunicipalities();
+  
   const [searchTerm, setSearchTerm] = useState("");
-  const [sortField, setSortField] = useState<keyof Municipality>("name");
+  const [sortField, setSortField] = useState<keyof MunicipalityWithCounts>("name");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
+  
+  // Modal states
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [newMunicipality, setNewMunicipality] = useState({
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isViewModalOpen, setIsViewModalOpen] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [selectedMunicipality, setSelectedMunicipality] = useState<MunicipalityWithCounts | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // Form state
+  const [formData, setFormData] = useState<MunicipalityFormData>({
     name: "",
     state: "",
-    notes: ""
+    status: "active",
   });
-  const { toast } = useToast();
 
-  const brazilianStates = [
-    "AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA",
-    "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI", "RJ", "RN",
-    "RS", "RO", "RR", "SC", "SP", "SE", "TO"
-  ];
+  const filteredMunicipalities = useMemo(() => {
+    return municipalities
+      .filter((municipality) =>
+        municipality.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        municipality.state.toLowerCase().includes(searchTerm.toLowerCase())
+      )
+      .sort((a, b) => {
+        const aValue = a[sortField];
+        const bValue = b[sortField];
+        if (sortDirection === "asc") {
+          return aValue < bValue ? -1 : aValue > bValue ? 1 : 0;
+        } else {
+          return aValue > bValue ? -1 : aValue < bValue ? 1 : 0;
+        }
+      });
+  }, [municipalities, searchTerm, sortField, sortDirection]);
 
-  const filteredMunicipalities = municipalities
-    .filter(municipality =>
-      municipality.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      municipality.state.toLowerCase().includes(searchTerm.toLowerCase())
-    )
-    .sort((a, b) => {
-      const aValue = a[sortField];
-      const bValue = b[sortField];
-      if (sortDirection === "asc") {
-        return aValue < bValue ? -1 : aValue > bValue ? 1 : 0;
-      } else {
-        return aValue > bValue ? -1 : aValue < bValue ? 1 : 0;
-      }
-    });
-
-  const handleSort = (field: keyof Municipality) => {
+  const handleSort = (field: keyof MunicipalityWithCounts) => {
     if (field === sortField) {
       setSortDirection(sortDirection === "asc" ? "desc" : "asc");
     } else {
@@ -71,42 +68,118 @@ const Municipalities = () => {
     }
   };
 
-  const handleAddMunicipality = () => {
-    if (!newMunicipality.name || !newMunicipality.state) {
-      toast({
-        title: "Erro",
-        description: "Nome e estado são obrigatórios.",
-        variant: "destructive"
-      });
-      return;
-    }
+  const resetForm = () => {
+    setFormData({ name: "", state: "", status: "active" });
+  };
 
-    const municipality: Municipality = {
-      id: Date.now().toString(),
-      name: newMunicipality.name,
-      state: newMunicipality.state,
-      surveysCount: 0,
-      demandsCount: 0,
-      status: "Active"
-    };
+  const handleOpenAdd = () => {
+    resetForm();
+    setIsAddModalOpen(true);
+  };
 
-    setMunicipalities([...municipalities, municipality]);
-    setNewMunicipality({ name: "", state: "", notes: "" });
-    setIsAddModalOpen(false);
+  const handleOpenEdit = (municipality: MunicipalityWithCounts) => {
+    setSelectedMunicipality(municipality);
+    setFormData({
+      name: municipality.name,
+      state: municipality.state,
+      status: municipality.status,
+    });
+    setIsEditModalOpen(true);
+  };
+
+  const handleOpenView = (municipality: MunicipalityWithCounts) => {
+    setSelectedMunicipality(municipality);
+    setIsViewModalOpen(true);
+  };
+
+  const handleOpenDelete = (municipality: MunicipalityWithCounts) => {
+    setSelectedMunicipality(municipality);
+    setIsDeleteDialogOpen(true);
+  };
+
+  const handleAdd = async () => {
+    if (!formData.name || !formData.state) return;
     
-    toast({
-      title: "Sucesso",
-      description: "Município adicionado com sucesso!"
-    });
+    setIsSubmitting(true);
+    const success = await createMunicipality(formData);
+    setIsSubmitting(false);
+    
+    if (success) {
+      setIsAddModalOpen(false);
+      resetForm();
+    }
   };
 
-  const handleDelete = (id: string) => {
-    setMunicipalities(municipalities.filter(m => m.id !== id));
-    toast({
-      title: "Sucesso",
-      description: "Município removido com sucesso!"
-    });
+  const handleEdit = async () => {
+    if (!selectedMunicipality || !formData.name || !formData.state) return;
+    
+    setIsSubmitting(true);
+    const success = await updateMunicipality(selectedMunicipality.id, formData);
+    setIsSubmitting(false);
+    
+    if (success) {
+      setIsEditModalOpen(false);
+      setSelectedMunicipality(null);
+      resetForm();
+    }
   };
+
+  const handleDelete = async () => {
+    if (!selectedMunicipality) return;
+    
+    setIsSubmitting(true);
+    const success = await deleteMunicipality(selectedMunicipality.id);
+    setIsSubmitting(false);
+    
+    if (success) {
+      setIsDeleteDialogOpen(false);
+      setSelectedMunicipality(null);
+    }
+  };
+
+  const getStatusBadge = (status: string) => {
+    const isActive = status === "active";
+    return (
+      <Badge variant={isActive ? "default" : "secondary"}>
+        {isActive ? "Ativo" : "Inativo"}
+      </Badge>
+    );
+  };
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex justify-between items-center">
+          <div>
+            <Skeleton className="h-8 w-48" />
+            <Skeleton className="h-4 w-64 mt-2" />
+          </div>
+          <Skeleton className="h-10 w-44" />
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {[1, 2, 3].map((i) => (
+            <Card key={i}>
+              <CardHeader className="pb-2">
+                <Skeleton className="h-4 w-32" />
+              </CardHeader>
+              <CardContent>
+                <Skeleton className="h-8 w-16" />
+                <Skeleton className="h-3 w-24 mt-2" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+        <Card>
+          <CardHeader>
+            <Skeleton className="h-10 w-full" />
+          </CardHeader>
+          <CardContent>
+            <Skeleton className="h-64 w-full" />
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -117,66 +190,10 @@ const Municipalities = () => {
           <p className="text-muted-foreground">Gerencie os municípios cadastrados no sistema</p>
         </div>
         
-        <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
-          <DialogTrigger asChild>
-            <Button className="flex items-center gap-2">
-              <Plus className="h-4 w-4" />
-              Adicionar Município
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle>Adicionar Novo Município</DialogTitle>
-              <DialogDescription>
-                Preencha as informações do município que deseja adicionar.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="name">Nome do Município</Label>
-                <Input
-                  id="name"
-                  value={newMunicipality.name}
-                  onChange={(e) => setNewMunicipality({...newMunicipality, name: e.target.value})}
-                  placeholder="Digite o nome do município"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="state">Estado</Label>
-                <Select
-                  value={newMunicipality.state}
-                  onValueChange={(value) => setNewMunicipality({...newMunicipality, state: value})}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione o estado" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {brazilianStates.map((state) => (
-                      <SelectItem key={state} value={state}>{state}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="notes">Observações</Label>
-                <Textarea
-                  id="notes"
-                  value={newMunicipality.notes}
-                  onChange={(e) => setNewMunicipality({...newMunicipality, notes: e.target.value})}
-                  placeholder="Observações adicionais (opcional)"
-                />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setIsAddModalOpen(false)}>
-                Cancelar
-              </Button>
-              <Button onClick={handleAddMunicipality}>
-                Adicionar
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        <Button className="flex items-center gap-2" onClick={handleOpenAdd}>
+          <Plus className="h-4 w-4" />
+          Adicionar Município
+        </Button>
       </div>
 
       {/* Stats Cards */}
@@ -187,9 +204,9 @@ const Municipalities = () => {
             <MapPin className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{municipalities.length}</div>
+            <div className="text-2xl font-bold">{stats.totalMunicipalities}</div>
             <p className="text-xs text-muted-foreground">
-              {municipalities.filter(m => m.status === "Active").length} ativos
+              {stats.activeMunicipalities} ativos
             </p>
           </CardContent>
         </Card>
@@ -197,12 +214,10 @@ const Municipalities = () => {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total de Pesquisas</CardTitle>
-            <MapPin className="h-4 w-4 text-muted-foreground" />
+            <FileText className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
-              {municipalities.reduce((sum, m) => sum + m.surveysCount, 0)}
-            </div>
+            <div className="text-2xl font-bold">{stats.totalSurveys}</div>
             <p className="text-xs text-muted-foreground">
               Distribuídas entre municípios
             </p>
@@ -212,12 +227,10 @@ const Municipalities = () => {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total de Demandas</CardTitle>
-            <MapPin className="h-4 w-4 text-muted-foreground" />
+            <ClipboardList className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
-              {municipalities.reduce((sum, m) => sum + m.demandsCount, 0)}
-            </div>
+            <div className="text-2xl font-bold">{stats.totalDemands}</div>
             <p className="text-xs text-muted-foreground">
               Aguardando processamento
             </p>
@@ -225,7 +238,7 @@ const Municipalities = () => {
         </Card>
       </div>
 
-      {/* Search and Filters */}
+      {/* Search and Table */}
       <Card>
         <CardHeader>
           <div className="flex flex-col sm:flex-row gap-4 items-center">
@@ -299,24 +312,31 @@ const Municipalities = () => {
                       <TableCell>{municipality.state}</TableCell>
                       <TableCell>{municipality.surveysCount}</TableCell>
                       <TableCell>{municipality.demandsCount}</TableCell>
-                      <TableCell>
-                        <Badge variant={municipality.status === "Active" ? "default" : "secondary"}>
-                          {municipality.status === "Active" ? "Ativo" : "Inativo"}
-                        </Badge>
-                      </TableCell>
+                      <TableCell>{getStatusBadge(municipality.status)}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
-                          <Button variant="ghost" size="sm">
+                          <Button 
+                            variant="ghost" 
+                            size="sm"
+                            onClick={() => handleOpenView(municipality)}
+                            title="Visualizar"
+                          >
                             <Eye className="h-4 w-4" />
                           </Button>
-                          <Button variant="ghost" size="sm">
+                          <Button 
+                            variant="ghost" 
+                            size="sm"
+                            onClick={() => handleOpenEdit(municipality)}
+                            title="Editar"
+                          >
                             <Edit className="h-4 w-4" />
                           </Button>
                           <Button 
                             variant="ghost" 
                             size="sm"
-                            onClick={() => handleDelete(municipality.id)}
+                            onClick={() => handleOpenDelete(municipality)}
                             className="text-destructive hover:text-destructive"
+                            title="Excluir"
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
@@ -330,6 +350,227 @@ const Municipalities = () => {
           </div>
         </CardContent>
       </Card>
+
+      {/* Add Municipality Modal */}
+      <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Adicionar Novo Município</DialogTitle>
+            <DialogDescription>
+              Preencha as informações do município que deseja adicionar.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="add-name">Nome do Município *</Label>
+              <Input
+                id="add-name"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                placeholder="Digite o nome do município"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="add-state">Estado *</Label>
+              <Select
+                value={formData.state}
+                onValueChange={(value) => setFormData({ ...formData, state: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o estado" />
+                </SelectTrigger>
+                <SelectContent>
+                  {brazilianStates.map((state) => (
+                    <SelectItem key={state} value={state}>{state}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="add-status">Status</Label>
+              <Select
+                value={formData.status}
+                onValueChange={(value) => setFormData({ ...formData, status: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">Ativo</SelectItem>
+                  <SelectItem value="inactive">Inativo</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsAddModalOpen(false)} disabled={isSubmitting}>
+              Cancelar
+            </Button>
+            <Button onClick={handleAdd} disabled={isSubmitting || !formData.name || !formData.state}>
+              {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Adicionar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Municipality Modal */}
+      <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Editar Município</DialogTitle>
+            <DialogDescription>
+              Atualize as informações do município.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-name">Nome do Município *</Label>
+              <Input
+                id="edit-name"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                placeholder="Digite o nome do município"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-state">Estado *</Label>
+              <Select
+                value={formData.state}
+                onValueChange={(value) => setFormData({ ...formData, state: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o estado" />
+                </SelectTrigger>
+                <SelectContent>
+                  {brazilianStates.map((state) => (
+                    <SelectItem key={state} value={state}>{state}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-status">Status</Label>
+              <Select
+                value={formData.status}
+                onValueChange={(value) => setFormData({ ...formData, status: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">Ativo</SelectItem>
+                  <SelectItem value="inactive">Inativo</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsEditModalOpen(false)} disabled={isSubmitting}>
+              Cancelar
+            </Button>
+            <Button onClick={handleEdit} disabled={isSubmitting || !formData.name || !formData.state}>
+              {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Salvar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* View Municipality Modal */}
+      <Dialog open={isViewModalOpen} onOpenChange={setIsViewModalOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Detalhes do Município</DialogTitle>
+          </DialogHeader>
+          {selectedMunicipality && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-muted-foreground">Nome</Label>
+                  <p className="font-medium">{selectedMunicipality.name}</p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">Estado</Label>
+                  <p className="font-medium">{selectedMunicipality.state}</p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">Status</Label>
+                  <div className="mt-1">{getStatusBadge(selectedMunicipality.status)}</div>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">Criado em</Label>
+                  <p className="font-medium">
+                    {format(new Date(selectedMunicipality.created_at), "dd/MM/yyyy HH:mm", { locale: ptBR })}
+                  </p>
+                </div>
+              </div>
+              
+              <div className="border-t pt-4">
+                <h4 className="font-semibold mb-3">Estatísticas</h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <Card>
+                    <CardContent className="pt-4">
+                      <div className="flex items-center gap-2">
+                        <FileText className="h-5 w-5 text-primary" />
+                        <div>
+                          <p className="text-2xl font-bold">{selectedMunicipality.surveysCount}</p>
+                          <p className="text-sm text-muted-foreground">Pesquisas</p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="pt-4">
+                      <div className="flex items-center gap-2">
+                        <ClipboardList className="h-5 w-5 text-primary" />
+                        <div>
+                          <p className="text-2xl font-bold">{selectedMunicipality.demandsCount}</p>
+                          <p className="text-sm text-muted-foreground">Demandas</p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsViewModalOpen(false)}>
+              Fechar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar Exclusão</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja excluir o município "{selectedMunicipality?.name}"? 
+              Esta ação não pode ser desfeita.
+              {(selectedMunicipality?.surveysCount ?? 0) > 0 || (selectedMunicipality?.demandsCount ?? 0) > 0 ? (
+                <span className="block mt-2 text-destructive">
+                  Atenção: Este município possui {selectedMunicipality?.surveysCount} pesquisa(s) e {selectedMunicipality?.demandsCount} demanda(s) associadas.
+                </span>
+              ) : null}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isSubmitting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              disabled={isSubmitting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
