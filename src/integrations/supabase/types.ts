@@ -252,6 +252,39 @@ export type Database = {
           },
         ]
       }
+      system_settings: {
+        Row: {
+          automatic_backup_enabled: boolean
+          automatic_backup_interval_hours: number
+          created_at: string
+          id: string
+          last_backup_datetime: string | null
+          theme_mode: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          automatic_backup_enabled?: boolean
+          automatic_backup_interval_hours?: number
+          created_at?: string
+          id?: string
+          last_backup_datetime?: string | null
+          theme_mode?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          automatic_backup_enabled?: boolean
+          automatic_backup_interval_hours?: number
+          created_at?: string
+          id?: string
+          last_backup_datetime?: string | null
+          theme_mode?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string
@@ -278,6 +311,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      can_modify_user: {
+        Args: { _action: string; _actor_id: string; _target_user_id: string }
+        Returns: boolean
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -285,9 +322,15 @@ export type Database = {
         }
         Returns: boolean
       }
+      is_superadmin: { Args: { _user_id: string }; Returns: boolean }
     }
     Enums: {
-      app_role: "administrator" | "researcher" | "analyst" | "coordinator"
+      app_role:
+        | "administrator"
+        | "researcher"
+        | "analyst"
+        | "coordinator"
+        | "superadmin"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -415,7 +458,13 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: ["administrator", "researcher", "analyst", "coordinator"],
+      app_role: [
+        "administrator",
+        "researcher",
+        "analyst",
+        "coordinator",
+        "superadmin",
+      ],
     },
   },
 } as const
