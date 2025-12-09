@@ -1,299 +1,153 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
 import { 
-  Settings as SettingsIcon, 
-  Users, 
-  Palette, 
   Database, 
-  Plus, 
-  Edit, 
-  Trash2, 
   Save,
   Clock,
   Shield,
   Moon,
-  Sun
+  Sun,
+  Loader2
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useTheme } from "@/hooks/useTheme";
-
-interface User {
-  id: string;
-  name: string;
-  email: string;
-  role: "Administrator" | "Reviewer" | "User";
-  status: "Active" | "Inactive";
-  lastLogin: string;
-}
-
-const mockUsers: User[] = [
-  { 
-    id: "1", 
-    name: "Administrador", 
-    email: "admin@geocidades.gov.br", 
-    role: "Administrator", 
-    status: "Active",
-    lastLogin: "2024-01-15 14:30"
-  },
-  { 
-    id: "2", 
-    name: "João Silva", 
-    email: "joao.silva@geocidades.gov.br", 
-    role: "Reviewer", 
-    status: "Active",
-    lastLogin: "2024-01-15 10:15"
-  },
-  { 
-    id: "3", 
-    name: "Maria Santos", 
-    email: "maria.santos@geocidades.gov.br", 
-    role: "User", 
-    status: "Active",
-    lastLogin: "2024-01-14 16:45"
-  },
-];
+import { useSystemSettings } from "@/hooks/useSystemSettings";
+import { useAuth } from "@/hooks/useAuth";
 
 const Settings = () => {
   const { toast } = useToast();
   const { isLight, toggleTheme } = useTheme();
-  const [users, setUsers] = useState<User[]>(mockUsers);
-  const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
-  const [newUser, setNewUser] = useState({
-    name: "",
-    email: "",
-    role: "User" as User['role']
-  });
-  const [lastBackup, setLastBackup] = useState("2024-01-15 02:00:00");
+  const { user } = useAuth();
+  const { settings, loading, saving, saveSettings, updateLastBackup } = useSystemSettings(user?.id);
+  
+  const [themeMode, setThemeMode] = useState<'light' | 'dark'>('dark');
+  const [autoBackupEnabled, setAutoBackupEnabled] = useState(true);
+  const [backupInterval, setBackupInterval] = useState(12);
+  const [runningBackup, setRunningBackup] = useState(false);
 
-  const handleAddUser = () => {
-    if (!newUser.name || !newUser.email) {
+  // Sync local state with database settings
+  useEffect(() => {
+    if (settings) {
+      setThemeMode(settings.theme_mode);
+      setAutoBackupEnabled(settings.automatic_backup_enabled);
+      setBackupInterval(settings.automatic_backup_interval_hours);
+      
+      // Sync theme with settings from database
+      const shouldBeLight = settings.theme_mode === 'light';
+      if (shouldBeLight !== isLight) {
+        toggleTheme();
+      }
+    }
+  }, [settings]);
+
+  const handleThemeToggle = () => {
+    const newMode = themeMode === 'dark' ? 'light' : 'dark';
+    setThemeMode(newMode);
+    toggleTheme();
+  };
+
+  const handleManualBackup = async () => {
+    setRunningBackup(true);
+    
+    try {
+      // Simulate backup process
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Update last backup time in database
+      const success = await updateLastBackup();
+      
+      if (success) {
+        toast({
+          title: "Backup Concluído",
+          description: "O backup manual foi executado com sucesso!",
+        });
+      } else {
+        throw new Error("Failed to update backup time");
+      }
+    } catch (error) {
       toast({
         title: "Erro",
-        description: "Nome e email são obrigatórios.",
-        variant: "destructive"
+        description: "Falha ao executar o backup.",
+        variant: "destructive",
       });
-      return;
+    } finally {
+      setRunningBackup(false);
     }
-
-    const user: User = {
-      id: Date.now().toString(),
-      name: newUser.name,
-      email: newUser.email,
-      role: newUser.role,
-      status: "Active",
-      lastLogin: "Nunca"
-    };
-
-    setUsers([...users, user]);
-    setNewUser({ name: "", email: "", role: "User" });
-    setIsAddUserModalOpen(false);
-    
-    toast({
-      title: "Sucesso",
-      description: "Usuário adicionado com sucesso!"
-    });
   };
 
-  const handleDeleteUser = (id: string) => {
-    setUsers(users.filter(u => u.id !== id));
-    toast({
-      title: "Sucesso",
-      description: "Usuário removido com sucesso!"
+  const handleSaveSettings = async () => {
+    const success = await saveSettings({
+      theme_mode: themeMode,
+      automatic_backup_enabled: autoBackupEnabled,
+      automatic_backup_interval_hours: backupInterval,
     });
+
+    if (!success) {
+      // Revert local state if save failed
+      if (settings) {
+        setThemeMode(settings.theme_mode);
+        setAutoBackupEnabled(settings.automatic_backup_enabled);
+        setBackupInterval(settings.automatic_backup_interval_hours);
+      }
+    }
   };
 
-  const handleManualBackup = () => {
-    const now = new Date().toLocaleString('pt-BR');
-    setLastBackup(now);
-    toast({
-      title: "Backup Iniciado",
-      description: "O backup manual foi iniciado com sucesso!"
-    });
+  const formatBackupDateTime = (datetime: string | null) => {
+    if (!datetime) return "Nenhum backup realizado";
+    return new Date(datetime).toLocaleString('pt-BR');
   };
 
-  const handleSaveSettings = () => {
-    toast({
-      title: "Configurações Salvas",
-      description: "Todas as configurações foram salvas com sucesso!"
-    });
-  };
-
-  const getRoleBadge = (role: User['role']) => {
-    const variants = {
-      "Administrator": "default",
-      "Reviewer": "secondary",
-      "User": "outline"
-    } as const;
-
-    const labels = {
-      "Administrator": "Administrador",
-      "Reviewer": "Revisor",
-      "User": "Usuário"
-    };
-
+  if (loading) {
     return (
-      <Badge variant={variants[role]}>
-        {labels[role]}
-      </Badge>
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">Configurações</h1>
+          <p className="text-muted-foreground">Gerencie as configurações do sistema</p>
+        </div>
+        
+        <Card>
+          <CardHeader>
+            <Skeleton className="h-6 w-48" />
+            <Skeleton className="h-4 w-72" />
+          </CardHeader>
+          <CardContent>
+            <Skeleton className="h-10 w-full" />
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardHeader>
+            <Skeleton className="h-6 w-48" />
+            <Skeleton className="h-4 w-72" />
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
+          </CardContent>
+        </Card>
+      </div>
     );
-  };
-
-  const getStatusBadge = (status: User['status']) => {
-    return (
-      <Badge variant={status === "Active" ? "default" : "destructive"}>
-        {status === "Active" ? "Ativo" : "Inativo"}
-      </Badge>
-    );
-  };
+  }
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-foreground">Configurações</h1>
-        <p className="text-muted-foreground">Gerencie as configurações do sistema e usuários</p>
+        <p className="text-muted-foreground">Gerencie as configurações do sistema</p>
       </div>
-
-      {/* User Management */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Users className="h-5 w-5" />
-            Gerenciamento de Usuários
-          </CardTitle>
-          <CardDescription>
-            Gerencie usuários do sistema e suas permissões (apenas administradores)
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex justify-between items-center">
-            <div className="text-sm text-muted-foreground">
-              Total de usuários: {users.length}
-            </div>
-            
-            <Dialog open={isAddUserModalOpen} onOpenChange={setIsAddUserModalOpen}>
-              <DialogTrigger asChild>
-                <Button size="sm" className="flex items-center gap-2">
-                  <Plus className="h-4 w-4" />
-                  Adicionar Usuário
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-md">
-                <DialogHeader>
-                  <DialogTitle>Adicionar Novo Usuário</DialogTitle>
-                  <DialogDescription>
-                    Preencha as informações do usuário que deseja adicionar.
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="user-name">Nome Completo</Label>
-                    <Input
-                      id="user-name"
-                      value={newUser.name}
-                      onChange={(e) => setNewUser({...newUser, name: e.target.value})}
-                      placeholder="Digite o nome completo"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="user-email">Email</Label>
-                    <Input
-                      id="user-email"
-                      type="email"
-                      value={newUser.email}
-                      onChange={(e) => setNewUser({...newUser, email: e.target.value})}
-                      placeholder="Digite o email"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="user-role">Perfil de Acesso</Label>
-                    <Select
-                      value={newUser.role}
-                      onValueChange={(value) => setNewUser({...newUser, role: value as User['role']})}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Selecione o perfil" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="User">Usuário</SelectItem>
-                        <SelectItem value="Reviewer">Revisor</SelectItem>
-                        <SelectItem value="Administrator">Administrador</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button variant="outline" onClick={() => setIsAddUserModalOpen(false)}>
-                    Cancelar
-                  </Button>
-                  <Button onClick={handleAddUser}>
-                    Adicionar
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-          </div>
-
-          <div className="rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Nome</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Perfil</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Último Login</TableHead>
-                  <TableHead className="text-right">Ações</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {users.map((user) => (
-                  <TableRow key={user.id}>
-                    <TableCell className="font-medium">{user.name}</TableCell>
-                    <TableCell>{user.email}</TableCell>
-                    <TableCell>{getRoleBadge(user.role)}</TableCell>
-                    <TableCell>{getStatusBadge(user.status)}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {user.lastLogin}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button variant="ghost" size="sm">
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button 
-                          variant="ghost" 
-                          size="sm"
-                          onClick={() => handleDeleteUser(user.id)}
-                          className="text-destructive hover:text-destructive"
-                          disabled={user.role === "Administrator"}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
 
       {/* Theme Settings */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            {isLight ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+            {themeMode === 'light' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
             Configurações de Tema
           </CardTitle>
           <CardDescription>
@@ -305,13 +159,13 @@ const Settings = () => {
             <div className="space-y-0.5">
               <Label htmlFor="light-mode">Modo Claro</Label>
               <div className="text-sm text-muted-foreground">
-                {isLight ? "Desativar para voltar ao tema escuro padrão" : "Ativar tema claro com fundo branco"}
+                {themeMode === 'light' ? "Desativar para voltar ao tema escuro padrão" : "Ativar tema claro com fundo branco"}
               </div>
             </div>
             <Switch
               id="light-mode"
-              checked={isLight}
-              onCheckedChange={toggleTheme}
+              checked={themeMode === 'light'}
+              onCheckedChange={handleThemeToggle}
             />
           </div>
         </CardContent>
@@ -336,7 +190,7 @@ const Settings = () => {
                 <span className="text-sm font-medium">Último Backup</span>
               </div>
               <div className="text-sm text-muted-foreground">
-                {lastBackup}
+                {formatBackupDateTime(settings?.last_backup_datetime || null)}
               </div>
             </div>
             
@@ -345,11 +199,36 @@ const Settings = () => {
                 <Shield className="h-4 w-4 text-muted-foreground" />
                 <span className="text-sm font-medium">Backup Automático</span>
               </div>
-              <div className="text-sm text-muted-foreground">
-                A cada 12 horas (configurado)
+              <div className="flex items-center gap-4">
+                <Switch
+                  id="auto-backup"
+                  checked={autoBackupEnabled}
+                  onCheckedChange={setAutoBackupEnabled}
+                />
+                <Label htmlFor="auto-backup" className="text-sm text-muted-foreground">
+                  {autoBackupEnabled ? "Ativado" : "Desativado"}
+                </Label>
               </div>
             </div>
           </div>
+
+          {autoBackupEnabled && (
+            <div className="space-y-2">
+              <Label htmlFor="backup-interval">Intervalo de Backup (horas)</Label>
+              <Input
+                id="backup-interval"
+                type="number"
+                min={1}
+                max={168}
+                value={backupInterval}
+                onChange={(e) => setBackupInterval(parseInt(e.target.value) || 12)}
+                className="max-w-[200px]"
+              />
+              <p className="text-sm text-muted-foreground">
+                O backup automático será executado a cada {backupInterval} hora{backupInterval > 1 ? 's' : ''}
+              </p>
+            </div>
+          )}
 
           <Separator />
 
@@ -360,9 +239,22 @@ const Settings = () => {
                 Execute um backup imediato do sistema
               </div>
             </div>
-            <Button variant="outline" onClick={handleManualBackup}>
-              <Database className="h-4 w-4 mr-2" />
-              Executar Backup
+            <Button 
+              variant="outline" 
+              onClick={handleManualBackup}
+              disabled={runningBackup}
+            >
+              {runningBackup ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Executando...
+                </>
+              ) : (
+                <>
+                  <Database className="h-4 w-4 mr-2" />
+                  Executar Backup
+                </>
+              )}
             </Button>
           </div>
         </CardContent>
@@ -370,9 +262,22 @@ const Settings = () => {
 
       {/* Save Button */}
       <div className="flex justify-end">
-        <Button onClick={handleSaveSettings} className="flex items-center gap-2">
-          <Save className="h-4 w-4" />
-          Salvar Configurações
+        <Button 
+          onClick={handleSaveSettings} 
+          className="flex items-center gap-2"
+          disabled={saving}
+        >
+          {saving ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Salvando...
+            </>
+          ) : (
+            <>
+              <Save className="h-4 w-4" />
+              Salvar Configurações
+            </>
+          )}
         </Button>
       </div>
     </div>

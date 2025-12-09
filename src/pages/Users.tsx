@@ -8,14 +8,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Search, Pencil, Trash2, UserPlus, Filter, Users as UsersIcon, Loader2, ShieldAlert } from "lucide-react";
+import { Search, Pencil, Trash2, UserPlus, Filter, Users as UsersIcon, Loader2, ShieldAlert, Crown } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserRole } from "@/hooks/useUserRole";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
 
-type UserRole = Database['public']['Enums']['app_role'];
+type UserRole = Database['public']['Enums']['app_role'] | 'superadmin';
 type Profile = Database['public']['Tables']['profiles']['Row'];
 
 interface UserWithRole extends Profile {
@@ -33,6 +33,7 @@ const Users = () => {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<UserWithRole | null>(null);
+  const [currentUserIsSuperadmin, setCurrentUserIsSuperadmin] = useState(false);
   const [newUser, setNewUser] = useState({
     name: "",
     email: "",
@@ -42,7 +43,7 @@ const Users = () => {
   });
   const { toast } = useToast();
   const { user: currentUser } = useAuth();
-  const { isAdmin, loading: roleLoading } = useUserRole(currentUser?.id);
+  const { isAdmin, isSuperadmin, loading: roleLoading } = useUserRole(currentUser?.id);
 
   useEffect(() => {
     fetchUsers();
@@ -100,6 +101,7 @@ const Users = () => {
 
       // Try to get emails via edge function (admin only)
       let emailMap: Record<string, string> = {};
+      let isSuperadminFromServer = false;
       try {
         const { data, error } = await supabase.functions.invoke('admin-user-management', {
           body: { action: 'list' }
@@ -107,6 +109,8 @@ const Users = () => {
         
         if (!error && data?.emails) {
           emailMap = data.emails;
+          isSuperadminFromServer = data.isSuperadmin || false;
+          setCurrentUserIsSuperadmin(isSuperadminFromServer);
         }
       } catch (e) {
         // Not admin or error - emails won't be available
@@ -119,7 +123,7 @@ const Users = () => {
         
         return {
           ...profile,
-          role: userRole?.role || 'researcher',
+          role: (userRole?.role || 'researcher') as UserRole,
           email: emailMap[profile.id] || 'N/A'
         };
       });
@@ -139,6 +143,8 @@ const Users = () => {
 
   const getRoleBadge = (role: UserRole) => {
     switch (role) {
+      case "superadmin":
+        return <Badge className="bg-amber-500 text-white"><Crown className="h-3 w-3 mr-1" />Superadmin</Badge>;
       case "administrator":
         return <Badge className="bg-primary text-primary-foreground">Administrador</Badge>;
       case "researcher":
@@ -167,6 +173,41 @@ const Users = () => {
     const matchesStatus = statusFilter === "all" || user.status === statusFilter;
     return matchesSearch && matchesRole && matchesStatus;
   });
+
+  // Check if current user can modify target user
+  const canModifyUser = (targetUser: UserWithRole): boolean => {
+    // Superadmins can modify anyone
+    if (isSuperadmin || currentUserIsSuperadmin) {
+      return true;
+    }
+    
+    // Admins cannot modify superadmins or other admins
+    if (targetUser.role === 'superadmin' || targetUser.role === 'administrator') {
+      return false;
+    }
+    
+    // Admins can modify other users
+    return isAdmin;
+  };
+
+  // Check if current user can delete target user
+  const canDeleteUser = (targetUser: UserWithRole): boolean => {
+    // Cannot delete yourself
+    if (targetUser.id === currentUser?.id) {
+      return false;
+    }
+    
+    return canModifyUser(targetUser);
+  };
+
+  // Check if current user can assign a specific role
+  const canAssignRole = (role: UserRole): boolean => {
+    // Only superadmins can assign admin or superadmin roles
+    if (role === 'administrator' || role === 'superadmin') {
+      return isSuperadmin || currentUserIsSuperadmin;
+    }
+    return isAdmin;
+  };
 
   const sendNotificationEmail = async (
     type: 'created' | 'updated' | 'deleted',
@@ -230,6 +271,16 @@ const Users = () => {
       return;
     }
 
+    // Check if user can assign the selected role
+    if (!canAssignRole(newUser.role)) {
+      toast({
+        title: "Erro",
+        description: "Ação bloqueada: apenas superadmins podem criar administradores.",
+        variant: "destructive"
+      });
+      return;
+    }
+
     try {
       setActionLoading(true);
 
@@ -277,6 +328,15 @@ const Users = () => {
   };
 
   const handleEditUser = (user: UserWithRole) => {
+    if (!canModifyUser(user)) {
+      toast({
+        title: "Ação bloqueada",
+        description: "Apenas superadmins podem modificar administradores.",
+        variant: "destructive"
+      });
+      return;
+    }
+
     setSelectedUser(user);
     setNewUser({
       name: user.full_name,
@@ -298,27 +358,32 @@ const Users = () => {
       return;
     }
 
+    // Check if role change is allowed
+    if (newUser.role !== selectedUser.role && !canAssignRole(newUser.role)) {
+      toast({
+        title: "Erro",
+        description: "Ação bloqueada: apenas superadmins podem promover usuários a administrador.",
+        variant: "destructive"
+      });
+      return;
+    }
+
     try {
       setActionLoading(true);
 
-      // Update profile
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .update({
+      // Call edge function to update user with role change validation
+      const { data, error } = await supabase.functions.invoke('admin-user-management', {
+        body: {
+          action: 'update',
+          user_id: selectedUser.id,
           full_name: newUser.name.trim(),
-          status: newUser.status
-        })
-        .eq('id', selectedUser.id);
+          status: newUser.status,
+          new_role: newUser.role !== selectedUser.role ? newUser.role : undefined
+        }
+      });
 
-      if (profileError) throw profileError;
-
-      // Update role
-      const { error: roleError } = await supabase
-        .from('user_roles')
-        .update({ role: newUser.role })
-        .eq('user_id', selectedUser.id);
-
-      if (roleError) throw roleError;
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
 
       // Send notification email
       await sendNotificationEmail('updated', {
@@ -354,11 +419,13 @@ const Users = () => {
     
     if (!userToDelete) return;
 
-    // Prevent self-deletion
-    if (userId === currentUser?.id) {
+    // Check if user can delete target
+    if (!canDeleteUser(userToDelete)) {
       toast({
-        title: "Erro",
-        description: "Você não pode excluir sua própria conta.",
+        title: "Ação bloqueada",
+        description: userToDelete.id === currentUser?.id 
+          ? "Você não pode excluir sua própria conta."
+          : "Apenas superadmins podem modificar administradores.",
         variant: "destructive"
       });
       return;
@@ -477,7 +544,12 @@ const Users = () => {
                       <SelectItem value="researcher">Pesquisador</SelectItem>
                       <SelectItem value="analyst">Analista</SelectItem>
                       <SelectItem value="coordinator">Coordenador</SelectItem>
-                      <SelectItem value="administrator">Administrador</SelectItem>
+                      {(isSuperadmin || currentUserIsSuperadmin) && (
+                        <>
+                          <SelectItem value="administrator">Administrador</SelectItem>
+                          <SelectItem value="superadmin">Superadmin</SelectItem>
+                        </>
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
@@ -517,7 +589,7 @@ const Users = () => {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total de Usuários</CardTitle>
@@ -528,6 +600,18 @@ const Users = () => {
             <p className="text-xs text-muted-foreground">
               {users.filter(u => u.status === "active").length} ativos
             </p>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Superadmins</CardTitle>
+            <Crown className="h-4 w-4 text-amber-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {users.filter(u => u.role === "superadmin").length}
+            </div>
           </CardContent>
         </Card>
         
@@ -577,6 +661,7 @@ const Users = () => {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos os Perfis</SelectItem>
+                  <SelectItem value="superadmin">Superadmins</SelectItem>
                   <SelectItem value="administrator">Administradores</SelectItem>
                   <SelectItem value="researcher">Pesquisadores</SelectItem>
                   <SelectItem value="analyst">Analistas</SelectItem>
@@ -643,7 +728,8 @@ const Users = () => {
                           variant="ghost" 
                           size="sm" 
                           onClick={() => handleEditUser(user)} 
-                          disabled={actionLoading}
+                          disabled={actionLoading || !canModifyUser(user)}
+                          title={!canModifyUser(user) ? "Apenas superadmins podem modificar administradores" : "Editar usuário"}
                         >
                           <Pencil className="h-4 w-4" />
                         </Button>
@@ -652,8 +738,14 @@ const Users = () => {
                           size="sm" 
                           className="text-destructive hover:text-destructive"
                           onClick={() => handleDeleteUser(user.id)}
-                          disabled={user.id === currentUser?.id || actionLoading}
-                          title={user.id === currentUser?.id ? "Você não pode excluir sua própria conta" : "Excluir usuário"}
+                          disabled={!canDeleteUser(user) || actionLoading}
+                          title={
+                            user.id === currentUser?.id 
+                              ? "Você não pode excluir sua própria conta" 
+                              : !canModifyUser(user)
+                                ? "Apenas superadmins podem modificar administradores"
+                                : "Excluir usuário"
+                          }
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
@@ -704,7 +796,11 @@ const Users = () => {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="edit-role">Perfil de Acesso</Label>
-                <Select value={newUser.role} onValueChange={(value: UserRole) => setNewUser({...newUser, role: value})}>
+                <Select 
+                  value={newUser.role} 
+                  onValueChange={(value: UserRole) => setNewUser({...newUser, role: value})}
+                  disabled={selectedUser && (selectedUser.role === 'administrator' || selectedUser.role === 'superadmin') && !(isSuperadmin || currentUserIsSuperadmin)}
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="Selecione o perfil" />
                   </SelectTrigger>
@@ -712,9 +808,19 @@ const Users = () => {
                     <SelectItem value="researcher">Pesquisador</SelectItem>
                     <SelectItem value="analyst">Analista</SelectItem>
                     <SelectItem value="coordinator">Coordenador</SelectItem>
-                    <SelectItem value="administrator">Administrador</SelectItem>
+                    {(isSuperadmin || currentUserIsSuperadmin) && (
+                      <>
+                        <SelectItem value="administrator">Administrador</SelectItem>
+                        <SelectItem value="superadmin">Superadmin</SelectItem>
+                      </>
+                    )}
                   </SelectContent>
                 </Select>
+                {selectedUser && (selectedUser.role === 'administrator' || selectedUser.role === 'superadmin') && !(isSuperadmin || currentUserIsSuperadmin) && (
+                  <p className="text-sm text-muted-foreground">
+                    Apenas superadmins podem alterar o perfil de administradores.
+                  </p>
+                )}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="edit-status">Status</Label>

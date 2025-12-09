@@ -7,14 +7,17 @@ const corsHeaders = {
 };
 
 interface CreateUserRequest {
-  action: "create" | "delete" | "list";
+  action: "create" | "delete" | "list" | "update";
   email?: string;
   password?: string;
   full_name?: string;
   role?: string;
   status?: string;
   user_id?: string;
+  new_role?: string;
 }
+
+type AppRole = 'superadmin' | 'administrator' | 'researcher' | 'analyst' | 'coordinator';
 
 const handler = async (req: Request): Promise<Response> => {
   // Handle CORS preflight requests
@@ -51,25 +54,75 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
-    // Check if user is admin using the has_role function
-    const { data: isAdmin, error: roleError } = await userClient.rpc('has_role', {
-      _user_id: currentUser.id,
-      _role: 'administrator'
-    });
+    // Create admin client with service role key for user management
+    const adminClient = createClient(supabaseUrl, supabaseServiceKey);
 
-    if (roleError || !isAdmin) {
-      console.error("Role check error:", roleError);
+    // Get current user's role
+    const { data: currentUserRoleData } = await adminClient
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", currentUser.id)
+      .single();
+
+    const currentUserRole = currentUserRoleData?.role as AppRole | undefined;
+    const isSuperadmin = currentUserRole === 'superadmin';
+    const isAdmin = currentUserRole === 'administrator' || isSuperadmin;
+
+    if (!isAdmin) {
       return new Response(
         JSON.stringify({ error: "Forbidden - Admin access required" }),
         { status: 403, headers: { "Content-Type": "application/json", ...corsHeaders } }
       );
     }
 
-    // Create admin client with service role key for user management
-    const adminClient = createClient(supabaseUrl, supabaseServiceKey);
-
     const body: CreateUserRequest = await req.json();
     console.log("Request body:", body);
+
+    // Helper function to get target user's role
+    const getTargetUserRole = async (targetUserId: string): Promise<AppRole | null> => {
+      const { data } = await adminClient
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", targetUserId)
+        .single();
+      return data?.role as AppRole | null;
+    };
+
+    // Helper function to check if actor can modify target
+    const canModifyUser = async (targetUserId: string, newRole?: string): Promise<{ allowed: boolean; message?: string }> => {
+      const targetRole = await getTargetUserRole(targetUserId);
+      
+      // Superadmins can do anything
+      if (isSuperadmin) {
+        return { allowed: true };
+      }
+      
+      // Admins cannot modify superadmins
+      if (targetRole === 'superadmin') {
+        return { 
+          allowed: false, 
+          message: "Ação bloqueada: apenas superadmins podem modificar superadministradores." 
+        };
+      }
+      
+      // Admins cannot modify other admins
+      if (targetRole === 'administrator') {
+        return { 
+          allowed: false, 
+          message: "Ação bloqueada: apenas superadmins podem modificar administradores." 
+        };
+      }
+      
+      // Admins cannot promote someone to admin or superadmin
+      if (newRole && (newRole === 'administrator' || newRole === 'superadmin')) {
+        return { 
+          allowed: false, 
+          message: "Ação bloqueada: apenas superadmins podem promover usuários a administrador." 
+        };
+      }
+      
+      return { allowed: true };
+    };
 
     switch (body.action) {
       case "create": {
@@ -98,11 +151,19 @@ const handler = async (req: Request): Promise<Response> => {
         }
 
         // Validate role
-        const validRoles = ['administrator', 'researcher', 'analyst', 'coordinator'];
+        const validRoles = ['superadmin', 'administrator', 'researcher', 'analyst', 'coordinator'];
         if (!validRoles.includes(body.role)) {
           return new Response(
             JSON.stringify({ error: "Invalid role" }),
             { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+          );
+        }
+
+        // Only superadmins can create admins or superadmins
+        if ((body.role === 'administrator' || body.role === 'superadmin') && !isSuperadmin) {
+          return new Response(
+            JSON.stringify({ error: "Ação bloqueada: apenas superadmins podem criar administradores." }),
+            { status: 403, headers: { "Content-Type": "application/json", ...corsHeaders } }
           );
         }
 
@@ -184,6 +245,75 @@ const handler = async (req: Request): Promise<Response> => {
         );
       }
 
+      case "update": {
+        if (!body.user_id) {
+          return new Response(
+            JSON.stringify({ error: "user_id is required" }),
+            { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+          );
+        }
+
+        // Check permissions
+        const permCheck = await canModifyUser(body.user_id, body.new_role);
+        if (!permCheck.allowed) {
+          return new Response(
+            JSON.stringify({ error: permCheck.message }),
+            { status: 403, headers: { "Content-Type": "application/json", ...corsHeaders } }
+          );
+        }
+
+        // Update role if provided
+        if (body.new_role) {
+          const validRoles = ['superadmin', 'administrator', 'researcher', 'analyst', 'coordinator'];
+          if (!validRoles.includes(body.new_role)) {
+            return new Response(
+              JSON.stringify({ error: "Invalid role" }),
+              { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+            );
+          }
+
+          const { error: roleUpdateError } = await adminClient
+            .from("user_roles")
+            .update({ role: body.new_role })
+            .eq("user_id", body.user_id);
+
+          if (roleUpdateError) {
+            console.error("Role update error:", roleUpdateError);
+            return new Response(
+              JSON.stringify({ error: roleUpdateError.message }),
+              { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
+            );
+          }
+        }
+
+        // Update profile if provided
+        if (body.full_name || body.status) {
+          const updateData: Record<string, string> = {};
+          if (body.full_name) updateData.full_name = body.full_name;
+          if (body.status) updateData.status = body.status;
+
+          const { error: profileUpdateError } = await adminClient
+            .from("profiles")
+            .update(updateData)
+            .eq("id", body.user_id);
+
+          if (profileUpdateError) {
+            console.error("Profile update error:", profileUpdateError);
+            return new Response(
+              JSON.stringify({ error: profileUpdateError.message }),
+              { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
+            );
+          }
+        }
+
+        console.log("User updated successfully:", body.user_id);
+
+        return new Response(
+          JSON.stringify({ success: true }),
+          { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        );
+      }
+
       case "delete": {
         if (!body.user_id) {
           return new Response(
@@ -197,6 +327,15 @@ const handler = async (req: Request): Promise<Response> => {
           return new Response(
             JSON.stringify({ error: "Cannot delete your own account" }),
             { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+          );
+        }
+
+        // Check permissions
+        const permCheck = await canModifyUser(body.user_id);
+        if (!permCheck.allowed) {
+          return new Response(
+            JSON.stringify({ error: permCheck.message }),
+            { status: 403, headers: { "Content-Type": "application/json", ...corsHeaders } }
           );
         }
 
@@ -259,7 +398,7 @@ const handler = async (req: Request): Promise<Response> => {
         });
 
         return new Response(
-          JSON.stringify({ success: true, emails: emailMap }),
+          JSON.stringify({ success: true, emails: emailMap, isSuperadmin }),
           { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
         );
       }
